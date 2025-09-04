@@ -284,16 +284,24 @@ app.get('/obtener/:id', async (req, res) => {
 
 		
 		if(client[0][0]["card_number"] != ''){
-			client[0][0]["card_number"] = decrypt(client[0][0]["card_number"]);
+		   if (client[0][0]["card_number"] !== null && client[0][0]["card_number"] !== '' && client[0][0]["card_number"] !== 'null') {
+			   client[0][0]["card_number"] = decrypt(client[0][0]["card_number"]);
+		   }
 		}
 		if(client[0][0]["expires_month"] != ''){
-			client[0][0]["expires_month"] = decrypt(client[0][0]["expires_month"]);
+		   if (client[0][0]["expires_month"] !== null && client[0][0]["expires_month"] !== '' && client[0][0]["expires_month"] !== 'null') {
+			   client[0][0]["expires_month"] = decrypt(client[0][0]["expires_month"]);
+		   }
 		}
 		if(client[0][0]["expires_year"] != ''){
-			client[0][0]["expires_year"] = decrypt(client[0][0]["expires_year"]);
+		   if (client[0][0]["expires_year"] !== null && client[0][0]["expires_year"] !== '' && client[0][0]["expires_year"] !== 'null') {
+			   client[0][0]["expires_year"] = decrypt(client[0][0]["expires_year"]);
+		   }
 		}	
 		if(client[0][0]["cvc"] != ''){
-			client[0][0]["cvc"] = decrypt(client[0][0]["cvc"]);
+		   if (client[0][0]["cvc"] !== null && client[0][0]["cvc"] !== '' && client[0][0]["cvc"] !== 'null') {
+			   client[0][0]["cvc"] = decrypt(client[0][0]["cvc"]);
+		   }
 		}
 			
 
