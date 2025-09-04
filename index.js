@@ -91,11 +91,11 @@ app.use((req, res, next) => {
     // Bloquea la solicitud con un error 403 (Forbidden)
     return res.status(403).json({ error: 'Origen no permitido' });
 }*/
-  
+
 
   res.header(
     'Access-Control-Allow-Headers',
-    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-auth-token'
   );
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   if (req.method === 'OPTIONS') {
