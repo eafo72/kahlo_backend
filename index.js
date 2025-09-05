@@ -166,6 +166,7 @@ const rutasTourRoutes = require('./src/routes/rutas-tour')
 const viajeTourRoutes = require('./src/routes/viaje-tour')
 const comentarioRoutes = require('./src/routes/comentario')
 const ventaRoutes = require('./src/routes/venta')
+const photosRoutes = require('./src/routes/photos')
 
 app.use('/usuario', userRoutes)
 app.use('/admin/admin', adminRoutes)
@@ -179,6 +180,7 @@ app.use('/admin/rutas-tour', rutasTourRoutes)
 app.use('/admin/viaje-tour', viajeTourRoutes)
 app.use('/cliente/comentario', comentarioRoutes)
 app.use('/venta', ventaRoutes)
+app.use('/photos', photosRoutes)
 
 app.get('/', (req, res) => res.send('KAHLO API'))
 
