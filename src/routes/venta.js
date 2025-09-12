@@ -330,22 +330,22 @@ app.post('/crear', async (req, res) => {
         await db.pool.query(query);
 
         let html = `<div style="background-color: #eeeeee;padding: 20px; width: 400px;">
-        <div align="center" style="padding-top:20px;padding-bottom:40px"><img src="https://mexptours.com/assets/img/ELEMENTOS/logo_mEXP_black.png" style="height:100px"/></div>
-        <p>Su compra en mEXP ha sido exitosa.</p>
+        <div align="center" style="padding-top:20px;padding-bottom:40px"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/logo_mEXP_black.png" style="height:100px"/></div>
+        <p>Su compra ha sido exitosa.</p>
 
-        <p style="display: inline-flex"><img src="https://mexptours.com/assets/img/ELEMENTOS/person.png"   style="height:18px;padding-right:7px"/>Numero de boletos: ${no_boletos}</p>
+        <p style="display: inline-flex"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/person.png"   style="height:18px;padding-right:7px"/>Numero de boletos: ${no_boletos}</p>
         <br>
-        <p style="display: inline-flex"><img src="https://mexptours.com/assets/img/ELEMENTOS/reloj.png"    style="height:18px;padding-right:7px"/>Fecha de ida: ${fecha_ida}</p>
+        <p style="display: inline-flex"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/reloj.png"    style="height:18px;padding-right:7px"/>Fecha: ${fecha_ida}</p>
         <br>
-        <p style="display: inline-flex"><img src="https://mexptours.com/assets/img/ELEMENTOS/palomita.png" style="height:18px;padding-right:7px"/>Id de reservación: ${id_reservacion}</p>
+        <p style="display: inline-flex"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/palomita.png" style="height:18px;padding-right:7px"/>Id de reservación: ${id_reservacion}</p>
         <br>
         <img src="${qrCodeImg}" alt="Código QR"/>
         
         <div style="padding-top:20px;padding-bottom:20px"><hr></div>
-        <p style="font-size:10px">Recibiste éste correo porque las preferencias de correo electrónico se configuraron para recibir notificaciones de MEXP Tours.</p>
+        <p style="font-size:10px">Recibiste éste correo porque las preferencias de correo electrónico se configuraron para recibir notificaciones del Museo Casa Kahlo.</p>
         <p style="font-size:10px">Te pedimos que no respondas a este correo electrónico. Si tienes alguna pregunta sobre tu cuenta, contáctanos a través de la aplicación.</p>
         
-        <p style="font-size:10px;padding-top:20px">Copyright©2024 Mexp Tours.Todos los derechos reservados.</p></div>`;
+        <p style="font-size:10px;padding-top:20px">Copyright©2025 Museo Casa Kahlo.Todos los derechos reservados.</p></div>`;
 
         let message = {
             from: process.env.MAIL, // sender address
