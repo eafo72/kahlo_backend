@@ -183,7 +183,7 @@ app.get('/disponibilidad/:tourid/fecha/:fecha/:hora', async (req, res) => {
 
 app.post('/crear', async (req, res) => {
     try {
-        let { no_boletos, pagado, nombre_cliente, cliente_id, correo,  viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
+        let { no_boletos, tipos_boletos, pagado, nombre_cliente, cliente_id, correo,  viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
 
         let today = new Date();
         let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
@@ -291,9 +291,9 @@ app.post('/crear', async (req, res) => {
         }
 
         query = `INSERT INTO venta 
-                        (id_reservacion, no_boletos, total, pagado, fecha_compra, comision, status_traspaso, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id) 
+                        (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id) 
                         VALUES 
-                        ('V', '${no_boletos}', '${total}', '${pagado}', '${fecha}', '0.0', '0', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}')`;
+                        ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '${pagado}', '${fecha}', '0.0', '0', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}')`;
 
         let result = await db.pool.query(query);
         result = result[0];
@@ -330,14 +330,14 @@ app.post('/crear', async (req, res) => {
         await db.pool.query(query);
 
         let html = `<div style="background-color: #eeeeee;padding: 20px; width: 400px;">
-        <div align="center" style="padding-top:20px;padding-bottom:40px"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/logo_mEXP_black.png" style="height:100px"/></div>
+        <div align="center" style="padding-top:20px;padding-bottom:40px"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/logodos.png" style="height:100px"/></div>
         <p>Su compra ha sido exitosa.</p>
 
-        <p style="display: inline-flex"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/person.png"   style="height:18px;padding-right:7px"/>Numero de boletos: ${no_boletos}</p>
+        <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
         <br>
-        <p style="display: inline-flex"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/reloj.png"    style="height:18px;padding-right:7px"/>Fecha: ${fecha_ida}</p>
+        <p style="display: inline-flex">Fecha: ${fecha_ida}</p>
         <br>
-        <p style="display: inline-flex"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/palomita.png" style="height:18px;padding-right:7px"/>Id de reservación: ${id_reservacion}</p>
+        <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
         <br>
         <img src="${qrCodeImg}" alt="Código QR"/>
         
