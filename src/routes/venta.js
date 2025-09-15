@@ -201,21 +201,27 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         let tourId = req.params.tourid;
         let boletos = parseInt(req.params.boletos);
 
+        // Debug logs para depuración
+        console.log('[HORARIOS] fecha:', fecha, 'tourId:', tourId, 'boletos:', boletos);
+
         //vemos que dia selecciono 
         let diaSeleccionado = weekDay(fecha);
+        console.log('[HORARIOS] diaSeleccionado:', diaSeleccionado);
 
         //buscamos los horarios del tour
-    let query = `SELECT * FROM fecha WHERE tour_id=${tourId} AND dia = '${diaSeleccionado}'`;
+        let query = `SELECT * FROM fecha WHERE tour_id=${tourId} AND dia = '${diaSeleccionado}'`;
+        console.log('[HORARIOS] query horarios:', query);
         let horariosResult = await db.pool.query(query);
         let horarios = horariosResult[0];
+        console.log('[HORARIOS] horarios encontrados:', horarios);
 
         // Para cada horario, verificar disponibilidad
         let horariosDisponibles = await Promise.all(horarios.map(async (horario) => {
-            // horario.hora debe estar en formato HH:MM:SS o HH:MM
             let hora = horario.hora.split(":")[0];
-            // Buscar viajeTour para ese tour, fecha y hora
             let queryViaje = `SELECT * FROM viajeTour WHERE CAST(fecha_ida AS DATE) = '${fecha}' AND HOUR(CAST(fecha_ida AS TIME)) = '${hora}' AND tour_id = ${tourId}`;
+            console.log('[HORARIOS] query viajeTour:', queryViaje);
             let viajeResult = await db.pool.query(queryViaje);
+            console.log('[HORARIOS] viajeResult:', viajeResult[0]);
             let disponible = true;
             let lugares_disp = null;
             if (viajeResult[0].length > 0) {
@@ -223,7 +229,6 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
                 lugares_disp = viaje.lugares_disp;
                 disponible = viaje.lugares_disp >= boletos;
             }
-            // Si no existe viajeTour, se asume que hay disponibilidad total (no hay reservas aún)
             return {
                 ...horario,
                 disponible,
@@ -234,6 +239,7 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         res.status(200).json({ error: false, horarios: horariosDisponibles });
 
     } catch (error) {
+        console.error('[HORARIOS] Error:', error);
         res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
     }
 })
