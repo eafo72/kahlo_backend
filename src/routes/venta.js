@@ -16,16 +16,30 @@ function addHoursToDate(objDate, intHours) {
     return newDateObj;
 }
 
+function weekDay(fecha) {
+    let dayselected;
+
+    if (typeof fecha === 'string') {
+        const [year, month, day] = fecha.split('-').map(Number);
+        dayselected = new Date(year, month - 1, day); // <-- sin UTC
+    } else {
+        dayselected = fecha;
+    }
+
+    const diasSemana = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+    return diasSemana[dayselected.getDay()];
+}
+
 // Función para generar el código QR
 async function generateQRCode(text) {
     try {
-      const qrCodeDataURL = await QRCode.toDataURL(text);
-      return qrCodeDataURL;
+        const qrCodeDataURL = await QRCode.toDataURL(text);
+        return qrCodeDataURL;
     } catch (err) {
-      console.error('Error generating QR Code:', err);
-      throw err;
+        console.error('Error generating QR Code:', err);
+        throw err;
     }
-  }
+}
 
 //////////////////////////////////////////
 //                Venta                 //
@@ -180,10 +194,54 @@ app.get('/disponibilidad/:tourid/fecha/:fecha/:hora', async (req, res) => {
     }
 })
 
+//la feha esta definida por AAAA-MM-DD
+app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
+    try {
+        let fecha = req.params.fecha;
+        let tourId = req.params.tourid;
+        let boletos = parseInt(req.params.boletos);
+
+        //vemos que dia selecciono 
+        let diaSeleccionado = weekDay(fecha);
+
+        //buscamos los horarios del tour
+        let query = `SELECT * FROM fecha WHERE tour_id=${tourId} AND dia = ${diaSeleccionado}`;
+        let horariosResult = await db.pool.query(query);
+        let horarios = horariosResult[0];
+
+        // Para cada horario, verificar disponibilidad
+        let horariosDisponibles = await Promise.all(horarios.map(async (horario) => {
+            // horario.hora debe estar en formato HH:MM:SS o HH:MM
+            let hora = horario.hora.split(":")[0];
+            // Buscar viajeTour para ese tour, fecha y hora
+            let queryViaje = `SELECT * FROM viajeTour WHERE CAST(fecha_ida AS DATE) = '${fecha}' AND HOUR(CAST(fecha_ida AS TIME)) = '${hora}' AND tour_id = ${tourId}`;
+            let viajeResult = await db.pool.query(queryViaje);
+            let disponible = true;
+            let lugares_disp = null;
+            if (viajeResult[0].length > 0) {
+                let viaje = viajeResult[0][0];
+                lugares_disp = viaje.lugares_disp;
+                disponible = viaje.lugares_disp >= boletos;
+            }
+            // Si no existe viajeTour, se asume que hay disponibilidad total (no hay reservas aún)
+            return {
+                ...horario,
+                disponible,
+                lugares_disp: lugares_disp !== null ? lugares_disp : 'sin_reserva'
+            };
+        }));
+
+        res.status(200).json({ error: false, horarios: horariosDisponibles });
+        
+    } catch (error) {
+        res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
+    }
+})
+
 
 app.post('/crear', async (req, res) => {
     try {
-        let { no_boletos, tipos_boletos, pagado, nombre_cliente, cliente_id, correo,  viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
+        let { no_boletos, tipos_boletos, pagado, nombre_cliente, cliente_id, correo, viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
 
         let today = new Date();
         let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
@@ -195,8 +253,8 @@ app.post('/crear', async (req, res) => {
 
         //info tour para calcular fecha de regreso
         query = `SELECT * FROM tour WHERE id = ${tourId} `;
-		let tour = await db.pool.query(query);
-		tour = tour[0][0];
+        let tour = await db.pool.query(query);
+        tour = tour[0][0];
         let duracion = tour.duracion;
         let max_pasajeros = tour.max_pasajeros;
         //console.log(`Duracion: ${duracion}`);
@@ -224,7 +282,7 @@ app.post('/crear', async (req, res) => {
 
                 //formateo de fecha regreso
                 const newfecha = addHoursToDate(new Date(fecha_ida), parseInt(duracion));
-                const fecha_regreso = newfecha.getFullYear() + "-" + ("0"+(newfecha.getMonth()+1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) +" "+ ("0" + (newfecha.getHours())).slice(-2) + ":" +("0" +(newfecha.getMinutes())).slice(-2);    
+                const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
                 console.log(fecha_regreso);
 
                 if (disponibilidad.length == 0) {
@@ -369,7 +427,7 @@ app.post('/crear', async (req, res) => {
         const info2 = await mailer.sendMail(message);
         console.log(info2);
 
-        res.status(200).json({msg: "Compra exitosa", id_reservacion: id_reservacion});
+        res.status(200).json({ msg: "Compra exitosa", id_reservacion: id_reservacion });
 
     } catch (error) {
         console.log(error);
@@ -568,7 +626,7 @@ app.put('/setFecha', async (req, res) => {
             return res.status(400).json({ msg: "Error en la busquda de los datos del cliente", error: true, details: 'nungun registro encontrado' });
         }
         client = client[0];
-        
+
         //Lugares disponibles
         if (seCreoRegistro) {
             lugares_disp = max_pasajeros - venta.no_boletos;
@@ -644,7 +702,7 @@ app.put('/checkin', async (req, res) => {
         let query = `SELECT * FROM venta WHERE id_reservacion = '${idReservacion}'`;
         let existReservacion = await db.pool.query(query);
         if (existReservacion[0].length < 1) {
-            return res.status(200).json({ error: true, msg:"El id de reservacion no existe"});
+            return res.status(200).json({ error: true, msg: "El id de reservacion no existe" });
         }
 
 
@@ -652,7 +710,7 @@ app.put('/checkin', async (req, res) => {
         query = `SELECT * FROM venta WHERE id_reservacion = '${idReservacion}' AND viajeTour_id = ${viajeTour_id}`;
         let correspondeIdVT = await db.pool.query(query);
         if (correspondeIdVT[0].length < 1) {
-            return res.status(200).json({ error: true, msg:"La reservación no corresponde al tour seleccionado"});
+            return res.status(200).json({ error: true, msg: "La reservación no corresponde al tour seleccionado" });
         }
 
 
