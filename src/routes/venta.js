@@ -217,7 +217,17 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
 
         // Para cada horario, verificar disponibilidad
         let horariosDisponibles = await Promise.all(horarios.map(async (horario) => {
-            let hora = horario.hora.split(":")[0];
+            // Soportar ambos nombres de campo: hora y hora_salida
+            let horaCampo = horario.hora || horario.hora_salida;
+            if (!horaCampo || typeof horaCampo !== 'string') {
+                // Si no hay hora válida, ignorar este horario
+                return {
+                    ...horario,
+                    disponible: false,
+                    lugares_disp: 'sin_hora'
+                };
+            }
+            let hora = horaCampo.split(":")[0];
             let queryViaje = `SELECT * FROM viajeTour WHERE CAST(fecha_ida AS DATE) = '${fecha}' AND HOUR(CAST(fecha_ida AS TIME)) = '${hora}' AND tour_id = ${tourId}`;
             console.log('[HORARIOS] query viajeTour:', queryViaje);
             let viajeResult = await db.pool.query(queryViaje);
