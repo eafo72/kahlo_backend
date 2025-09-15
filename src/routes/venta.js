@@ -267,9 +267,9 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
 })
 
 
-app.post('/horarios-disponibles', async (req, res) => {
+app.get('/horarios-disponibles/:tourId/:fecha_ida/:visitantes', async (req, res) => {
   try {
-    const { tourId, fecha_ida, visitantes } = req.body;
+    const { tourId, fecha_ida, visitantes } = req.params;
 
     // Info del tour
     let query = `SELECT * FROM tour WHERE id = ${tourId}`;
