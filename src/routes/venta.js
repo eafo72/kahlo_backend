@@ -238,11 +238,23 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
                 let viaje = viajeResult[0][0];
                 lugares_disp = viaje.lugares_disp;
                 disponible = viaje.lugares_disp >= boletos;
+            } else {
+                // No hay viajeTour, consultar el tour para max_pasajeros
+                let queryTour = `SELECT max_pasajeros FROM tour WHERE id = ${tourId}`;
+                let tourResult = await db.pool.query(queryTour);
+                let max_pasajeros = tourResult[0][0]?.max_pasajeros;
+                if (typeof max_pasajeros === 'number') {
+                    lugares_disp = max_pasajeros;
+                    disponible = max_pasajeros >= boletos;
+                } else {
+                    lugares_disp = 'sin_info_tour';
+                    disponible = false;
+                }
             }
             return {
                 ...horario,
                 disponible,
-                lugares_disp: lugares_disp !== null ? lugares_disp : 'sin_reserva'
+                lugares_disp
             };
         }));
 
