@@ -205,7 +205,7 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         let diaSeleccionado = weekDay(fecha);
 
         //buscamos los horarios del tour
-        let query = `SELECT * FROM fecha WHERE tour_id=${tourId} AND dia = ${diaSeleccionado}`;
+    let query = `SELECT * FROM fecha WHERE tour_id=${tourId} AND dia = '${diaSeleccionado}'`;
         let horariosResult = await db.pool.query(query);
         let horarios = horariosResult[0];
 
@@ -232,7 +232,7 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         }));
 
         res.status(200).json({ error: false, horarios: horariosDisponibles });
-        
+
     } catch (error) {
         res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
     }
