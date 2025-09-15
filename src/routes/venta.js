@@ -239,6 +239,63 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
 })
 
 
+app.post('/horarios-disponibles', async (req, res) => {
+  try {
+    const { tourId, fecha_ida, visitantes } = req.body;
+
+    // Info del tour
+    let query = `SELECT * FROM tour WHERE id = ${tourId}`;
+    let tour = await db.pool.query(query);
+    if (tour[0].length === 0) {
+      return res.status(404).json({ msg: "Tour no encontrado" });
+    }
+    tour = tour[0][0];
+    const max_pasajeros = tour.max_pasajeros;
+
+    // Horarios posibles desde la tabla fecha (catálogo de horarios del tour)
+    query = `SELECT * FROM fecha WHERE tour_id=${tourId}`;
+    let salidas = await db.pool.query(query);
+    salidas = salidas[0];
+
+    const disponibles = [];
+
+    for (let salida of salidas) {
+      const hora = salida.hora_salida;
+      const horaSplit = hora.split(':')[0]; // solo hora para el WHERE HOUR()
+
+      // Revisar si ya hay viajeTour en esa fecha + hora
+      query = `SELECT * FROM viajeTour 
+               WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
+               AND HOUR(CAST(fecha_ida AS TIME)) = '${horaSplit}'
+               AND tour_id = ${tourId}`;
+      let viaje = await db.pool.query(query);
+      viaje = viaje[0];
+
+      let lugares_disp = max_pasajeros;
+      if (viaje.length > 0) {
+        lugares_disp = viaje[0].lugares_disp;
+      }
+
+      if (lugares_disp >= visitantes) {
+        disponibles.push({
+          hora: hora,
+          lugares: lugares_disp
+        });
+      }
+    }
+
+    if (disponibles.length === 0) {
+      return res.status(200).json({ horarios: [], msg: "No hay horarios con disponibilidad suficiente" });
+    }
+
+    res.status(200).json({ horarios: disponibles });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: true, msg: "Error obteniendo horarios disponibles", details: error });
+  }
+});
+
 app.post('/crear', async (req, res) => {
     try {
         let { no_boletos, tipos_boletos, pagado, nombre_cliente, cliente_id, correo, viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
