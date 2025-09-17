@@ -7,8 +7,7 @@ const auth = require('../middlewares/authorization')
 const db = require('../config/db')
 const mailer = require('../controller/mailController')
 const helperName = require('../helpers/name')
-const QRCode = require('qrcode')
-//const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const QRCode = require('qrcode');
 
 function addHoursToDate(objDate, intHours) {
     var numberOfMlSeconds = objDate.getTime();
@@ -521,30 +520,6 @@ app.post('/crear', async (req, res) => {
     }
 })
 
-/*app.post('/stripe/create-checkout-session', async (req, res) => {
-  try {
-    const { lineItems, customerEmail, successUrl, cancelUrl, metadata } = req.body;
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: lineItems,
-      mode: 'payment',
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      customer_email: customerEmail,
-      metadata: metadata,
-      billing_address_collection: 'required',
-      shipping_address_collection: {
-        allowed_countries: ['MX']
-      }
-    });
-
-    res.json({ sessionId: session.id });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-*/
 //la feha esta definida por AAAA-MM-DD y la hora desde 00 hasta 23
 app.get('/reservacion/:id', async (req, res) => {
     try {
