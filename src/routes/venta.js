@@ -266,7 +266,7 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
     }
 })
 
-
+///API DE PRUEBAS DE TULIO/////
 app.get('/horarios-disponibles/:tourId/:fecha_ida/:visitantes', async (req, res) => {
   try {
     const { tourId, fecha_ida, visitantes } = req.params;
@@ -512,7 +512,7 @@ app.post('/crear', async (req, res) => {
         const info2 = await mailer.sendMail(message);
         console.log(info2);
 
-        res.status(200).json({ msg: "Compra exitosa", id_reservacion: id_reservacion });
+        res.status(200).json({ msg: "Compra exitosa", id_reservacion: id_reservacion, viajeTourId: viajeTourId, error: false });
 
     } catch (error) {
         console.log(error);
