@@ -8,7 +8,7 @@ const db = require('../config/db')
 const mailer = require('../controller/mailController')
 const helperName = require('../helpers/name')
 const QRCode = require('qrcode')
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+//const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 function addHoursToDate(objDate, intHours) {
     var numberOfMlSeconds = objDate.getTime();
@@ -521,7 +521,7 @@ app.post('/crear', async (req, res) => {
     }
 })
 
-app.post('/stripe/create-checkout-session', async (req, res) => {
+/*app.post('/stripe/create-checkout-session', async (req, res) => {
   try {
     const { lineItems, customerEmail, successUrl, cancelUrl, metadata } = req.body;
 
@@ -544,7 +544,7 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 });
-
+*/
 //la feha esta definida por AAAA-MM-DD y la hora desde 00 hasta 23
 app.get('/reservacion/:id', async (req, res) => {
     try {
