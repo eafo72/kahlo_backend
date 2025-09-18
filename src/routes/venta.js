@@ -577,7 +577,8 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
       // Ejecutar la misma lógica que el endpoint /crear
       if (session.metadata) {
         try {
-          const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, fecha_ida, horaCompleta, total } = session.metadata;
+          const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, horaCompleta, total } = session.metadata;
+          let fecha_ida = session.metadata.fecha_ida; // Usar let para poder modificarla
           
           let today = new Date();
           let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
@@ -765,7 +766,8 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
       if (charge.metadata && Object.keys(charge.metadata).length > 0) {
         console.log('🎯 Charge tiene metadata, procesando...');
         try {
-          const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, fecha_ida, horaCompleta, total } = charge.metadata;
+          const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, horaCompleta, total } = charge.metadata;
+          let fecha_ida = charge.metadata.fecha_ida; // Usar let para poder modificarla
           
           // Verificar que tengamos los datos necesarios
           if (!no_boletos || !cliente_id || !tourId) {
@@ -995,7 +997,8 @@ app.post('/stripe/webhook-test', express.json(), async (req, res) => {
         
         if (session.metadata) {
           try {
-            const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, fecha_ida, horaCompleta, total } = session.metadata;
+            const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, horaCompleta, total } = session.metadata;
+            let fecha_ida = session.metadata.fecha_ida; // Usar let para poder modificarla
             
             console.log('📊 Datos extraídos:', {
               no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, fecha_ida, horaCompleta, total
