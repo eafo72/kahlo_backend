@@ -17,6 +17,16 @@ function addHoursToDate(objDate, intHours) {
     return newDateObj;
 }
 
+// Endpoint súper simple para probar que las rutas funcionan
+app.get('/test-simple', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Endpoint simple funcionando',
+        timestamp: new Date().toISOString(),
+        path: req.originalUrl
+    });
+});
+
 function weekDay(fecha) {
     let dayselected;
 
