@@ -544,13 +544,22 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
 });
 
 app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+  console.log('🔄 Webhook recibido!');
+  console.log('Headers:', req.headers);
+  console.log('Body length:', req.body ? req.body.length : 'No body');
+  
   const sig = req.headers['stripe-signature'];
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  console.log('Signature:', sig ? 'Presente' : 'Ausente');
+  console.log('Endpoint Secret:', endpointSecret ? 'Configurado' : 'No configurado');
 
   let event;
 
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    console.log('✅ Webhook verificado exitosamente');
+    console.log('Tipo de evento:', event.type);
   } catch (err) {
     console.log(`⚠️  Webhook signature verification failed.`, err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);

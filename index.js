@@ -48,12 +48,19 @@ const blockedAgents = [
   'axios',
   'Custom-AsyncHttpClient',
   'WanScannerBot/1.1',
-  'Mozilla/5.0',
+  // 'Mozilla/5.0', // Comentado: muy genérico, usado por muchos servicios legítimos
   'Go-http-client/1.1'
 ];
 
 app.use((req, res, next) => {
   const userAgent = req.headers['user-agent']?.toLowerCase() || '';
+  
+  // Permitir todos los user-agents para webhooks de Stripe
+  if (req.originalUrl.startsWith('/stripe/webhook')) {
+    console.log('[✅ WEBHOOK STRIPE] User-Agent permitido:', userAgent);
+    return next();
+  }
+  
   if (blockedAgents.some(agent => userAgent.includes(agent))) {
     console.warn('[❌ USER-AGENT BLOQUEADO]', {
       metodo: req.method,
