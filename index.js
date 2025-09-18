@@ -27,8 +27,18 @@ app.use((req, res, next) => {
 
 app.use(customRateLimit);
 
-// 2) Parser de JSON / URL–encoded
-app.use(express.json({ limit: '25mb' }));
+// 2) Parser de JSON / URL–encoded - EXCEPTO para rutas específicas
+app.use((req, res, next) => {
+  // No aplicar express.json() a rutas que manejan su propio parsing
+  if (req.originalUrl.includes('/stripe/webhook') || 
+      req.originalUrl.includes('/test/webhook-basic')) {
+    return next();
+  }
+  
+  // Aplicar express.json() a todas las demás rutas
+  express.json({ limit: '25mb' })(req, res, next);
+});
+
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
 
 // 3) Denegar dotfiles en la carpeta pública
@@ -55,9 +65,12 @@ const blockedAgents = [
 app.use((req, res, next) => {
   const userAgent = req.headers['user-agent']?.toLowerCase() || '';
   
-  // Permitir todos los user-agents para webhooks de Stripe
-  if (req.originalUrl.startsWith('/stripe/webhook') || req.originalUrl.startsWith('/venta/stripe/webhook')) {
-    console.log('[✅ WEBHOOK STRIPE] User-Agent permitido:', userAgent);
+  // Permitir todos los user-agents para webhooks de Stripe y endpoints de test
+  if (req.originalUrl.startsWith('/stripe/webhook') || 
+      req.originalUrl.startsWith('/venta/stripe/webhook') ||
+      req.originalUrl.startsWith('/venta/test/') ||
+      req.originalUrl.startsWith('/stripe/test/')) {
+    console.log('[✅ WEBHOOK/TEST] User-Agent permitido:', userAgent);
     return next();
   }
   

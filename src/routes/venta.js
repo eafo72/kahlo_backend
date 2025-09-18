@@ -978,6 +978,20 @@ app.get('/stripe/webhook-test', (req, res) => {
   });
 });
 
+// Endpoint de test básico sin middleware de parsing
+app.post('/test/webhook-basic', (req, res) => {
+  console.log('🧪 WEBHOOK TEST BÁSICO - Sin parsing');
+  console.log('Headers:', req.headers);
+  console.log('Raw body type:', typeof req.body);
+  
+  res.json({
+    success: true,
+    message: 'Test básico completado',
+    timestamp: new Date().toISOString(),
+    contentType: req.headers['content-type']
+  });
+});
+
 // Endpoint de test separado para webhook con express.json()
 app.post('/test/webhook-simple', express.json(), (req, res) => {
   console.log('🧪 WEBHOOK TEST SIMPLE - Solo logging');
