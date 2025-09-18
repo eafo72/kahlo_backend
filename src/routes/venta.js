@@ -998,19 +998,19 @@ app.post('/stripe/webhook-test', express.json(), async (req, res) => {
         if (session.metadata) {
           try {
             const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, horaCompleta, total } = session.metadata;
-            let fecha_ida = session.metadata.fecha_ida; // Usar let para poder modificarla
+            let fecha_ida_original = session.metadata.fecha_ida; // Usar variable con nombre diferente
             
             console.log('📊 Datos extraídos:', {
-              no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, fecha_ida, horaCompleta, total
+              no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, fecha_ida: fecha_ida_original, horaCompleta, total
             });
             
             // Validar que tengamos los datos mínimos necesarios
-            if (!no_boletos || !cliente_id || !tourId || !fecha_ida || !horaCompleta) {
-              console.error('❌ Datos incompletos:', { no_boletos, cliente_id, tourId, fecha_ida, horaCompleta });
+            if (!no_boletos || !cliente_id || !tourId || !fecha_ida_original || !horaCompleta) {
+              console.error('❌ Datos incompletos:', { no_boletos, cliente_id, tourId, fecha_ida: fecha_ida_original, horaCompleta });
               return res.status(400).json({ 
                 error: 'Datos incompletos',
                 required: ['no_boletos', 'cliente_id', 'tourId', 'fecha_ida', 'horaCompleta'],
-                received: { no_boletos, cliente_id, tourId, fecha_ida, horaCompleta }
+                received: { no_boletos, cliente_id, tourId, fecha_ida: fecha_ida_original, horaCompleta }
               });
             }
             
@@ -1046,7 +1046,7 @@ app.post('/stripe/webhook-test', express.json(), async (req, res) => {
               query = `SELECT 
                       * 
                       FROM viajeTour 
-                      WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
+                      WHERE CAST(fecha_ida AS DATE) = '${fecha_ida_original}'
                       AND HOUR(CAST(fecha_ida AS TIME)) = '${hora[0]}'
                       AND tour_id = ${tourId};`;
               
@@ -1061,11 +1061,11 @@ app.post('/stripe/webhook-test', express.json(), async (req, res) => {
                   horaCompleta += ':00'
               }
               //formateo de fechaida
-              fecha_ida += ' ' + horaCompleta;
-              console.log('📅 Fecha ida formateada:', fecha_ida);
+              let fecha_ida_formateada = fecha_ida_original + ' ' + horaCompleta;
+              console.log('📅 Fecha ida formateada:', fecha_ida_formateada);
 
               //formateo de fecha regreso
-              const newfecha = addHoursToDate(new Date(fecha_ida), parseInt(duracion));
+              const newfecha = addHoursToDate(new Date(fecha_ida_formateada), parseInt(duracion));
               const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
               console.log('📅 Fecha regreso calculada:', fecha_regreso);
 
@@ -1083,7 +1083,7 @@ app.post('/stripe/webhook-test', express.json(), async (req, res) => {
                   query = `INSERT INTO viajeTour 
                       (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
                       VALUES 
-                      ('${fecha_ida}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
+                      ('${fecha_ida_formateada}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
 
                   result = await db.pool.query(query);
                   result = result[0];
