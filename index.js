@@ -39,8 +39,8 @@ app.use(
 );
 
 // 3.1 Bloqueo por User-Agent sospechoso
+//'postmanruntime',
 const blockedAgents = [
-  'postmanruntime',
   'curl',
   'insomnia',
   'httpie',
