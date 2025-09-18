@@ -1213,6 +1213,33 @@ app.get('/reservacion/:id', async (req, res) => {
     }
 })
 
+// Endpoint ultra-simple para probar sin metadata compleja
+app.post('/stripe/webhook-simple-test', express.json(), async (req, res) => {
+  console.log('🧪 SIMPLE TEST - Recibido');
+  try {
+    // Test muy básico sin usar fecha_ida
+    const testData = {
+      no_boletos: "1",
+      cliente_id: "1",
+      tourId: "24",
+      total: "100"
+    };
+    
+    console.log('Test data:', testData);
+    
+    // Solo responder sin hacer nada complejo
+    res.json({
+      success: true,
+      message: 'Simple test passed',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Error en simple test:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/landingInfo/:id', async (req, res) => {
     try {
         let reservacion = req.params.id;
