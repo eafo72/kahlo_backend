@@ -615,7 +615,7 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
       if (session.metadata) {
         try {
           const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, horaCompleta, total } = session.metadata;
-          let fecha_ida = session.metadata.fecha_ida; // Usar let para poder modificarla
+          let fecha_ida_original = session.metadata.fecha_ida; // Variable separada para evitar conflictos
           
           let today = new Date();
           let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
@@ -639,7 +639,7 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
             query = `SELECT 
                     * 
                     FROM viajeTour 
-                    WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
+                    WHERE CAST(fecha_ida AS DATE) = '${fecha_ida_original}'
                     AND HOUR(CAST(fecha_ida AS TIME)) = '${hora[0]}'
                     AND tour_id = ${tourId};`;
             let disponibilidad = await db.pool.query(query);
@@ -649,10 +649,10 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
                 horaCompleta += ':00'
             }
             //formateo de fechaida
-            fecha_ida += ' ' + horaCompleta;
+            let fecha_ida_formateada = fecha_ida_original + ' ' + horaCompleta;
 
             //formateo de fecha regreso
-            const newfecha = addHoursToDate(new Date(fecha_ida), parseInt(duracion));
+            const newfecha = addHoursToDate(new Date(fecha_ida_formateada), parseInt(duracion));
             const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
 
             if (disponibilidad.length == 0) {
@@ -675,7 +675,7 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
                 query = `INSERT INTO viajeTour 
                     (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
                     VALUES 
-                    ('${fecha_ida}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
+                    ('${fecha_ida_formateada}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
 
                 result = await db.pool.query(query);
                 result = result[0];
