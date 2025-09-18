@@ -544,9 +544,12 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
 });
 
 app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
-  console.log('🔄 Webhook recibido!');
+  console.log('� WEBHOOK ENDPOINT ALCANZADO - TIMESTAMP:', new Date().toISOString());
+  console.log('�🔄 Webhook recibido!');
   console.log('Headers:', req.headers);
   console.log('Body length:', req.body ? req.body.length : 'No body');
+  console.log('Method:', req.method);
+  console.log('URL:', req.originalUrl);
   
   const sig = req.headers['stripe-signature'];
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -569,7 +572,7 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
   switch (event.type) {
     case 'checkout.session.completed':
       const session = event.data.object;
-      console.log('💰 Payment succeeded:', session.id);
+      console.log('💰 Payment succeeded (checkout.session.completed):', session.id);
       
       // Ejecutar la misma lógica que el endpoint /crear
       if (session.metadata) {
@@ -753,6 +756,203 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
       }
       break;
     
+    case 'charge.succeeded':
+      const charge = event.data.object;
+      console.log('💰 Payment succeeded (charge.succeeded):', charge.id);
+      console.log('Charge metadata:', charge.metadata);
+      
+      // Si el charge tiene metadata, procesarlo
+      if (charge.metadata && Object.keys(charge.metadata).length > 0) {
+        console.log('🎯 Charge tiene metadata, procesando...');
+        try {
+          const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, fecha_ida, horaCompleta, total } = charge.metadata;
+          
+          // Verificar que tengamos los datos necesarios
+          if (!no_boletos || !cliente_id || !tourId) {
+            console.log('⚠️ Metadata incompleta en charge:', charge.metadata);
+            break;
+          }
+          
+          let today = new Date();
+          let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
+          let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
+          let fecha = date + ' ' + time;
+          let seCreoRegistro = false;
+          let viajeTour = '';
+          let query = ``;
+          let viajeTourId = null;
+
+          //info tour para calcular fecha de regreso
+          query = `SELECT * FROM tour WHERE id = ${tourId} `;
+          let tour = await db.pool.query(query);
+          tour = tour[0][0];
+          let duracion = tour.duracion;
+          let max_pasajeros = tour.max_pasajeros;
+
+          try {
+            let hora = horaCompleta.split(':');
+
+            query = `SELECT 
+                    * 
+                    FROM viajeTour 
+                    WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
+                    AND HOUR(CAST(fecha_ida AS TIME)) = '${hora[0]}'
+                    AND tour_id = ${tourId};`;
+            let disponibilidad = await db.pool.query(query);
+            disponibilidad = disponibilidad[0];
+
+            if (hora.length < 3) {
+                horaCompleta += ':00'
+            }
+            //formateo de fechaida
+            fecha_ida += ' ' + horaCompleta;
+
+            //formateo de fecha regreso
+            const newfecha = addHoursToDate(new Date(fecha_ida), parseInt(duracion));
+            const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
+
+            if (disponibilidad.length == 0) {
+                query = `SELECT 
+                    * 
+                    FROM tour
+                    WHERE id = ${tourId}`;
+                let result = await db.pool.query(query);
+
+                if (result[0].length == 0) {
+                    console.error("Error en la busqueda del tour por id");
+                    break;
+                }
+
+                result = result[0][0];
+
+                let guia = result.guias;
+                guia = JSON.parse(guia);
+
+                query = `INSERT INTO viajeTour 
+                    (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
+                    VALUES 
+                    ('${fecha_ida}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
+
+                result = await db.pool.query(query);
+                result = result[0];
+
+                viajeTourId = result.insertId;
+                seCreoRegistro = true;
+
+            } else {
+                viajeTour = disponibilidad[0];
+                viajeTourId = disponibilidad[0].id;
+            }
+
+          } catch (error) {
+              console.log('Error en creacion viajeTour:', error);
+              break;
+          }
+
+          let lugares_disp = 0;
+
+          if (seCreoRegistro) {
+              lugares_disp = max_pasajeros - parseInt(no_boletos);
+          } else {
+              lugares_disp = viajeTour.lugares_disp - parseInt(no_boletos);
+          }
+
+          query = `INSERT INTO venta 
+                          (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id) 
+                          VALUES 
+                          ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '1', '${fecha}', '0.0', '0', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}')`;
+
+          let result = await db.pool.query(query);
+          result = result[0];
+
+          query = `SELECT 
+                          * 
+                          FROM usuario
+                          WHERE id = ${cliente_id}`;
+          let client = await db.pool.query(query);
+
+          client = client[0];
+
+          if (client.length == 0) {
+              console.error("Error en la busqueda de los datos del cliente");
+              break;
+          }
+          client = client[0];
+
+          let id_reservacion = result.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
+
+          //creamos el QR
+          const qrCodeImg = await generateQRCode(id_reservacion);
+
+          query = `UPDATE viajeTour SET
+                      lugares_disp = '${lugares_disp}'
+                      WHERE id     = ${viajeTourId}`;
+
+          await db.pool.query(query);
+
+          query = `UPDATE venta SET
+                      id_reservacion = '${id_reservacion}'
+                      WHERE id       = ${result.insertId}`;
+
+          await db.pool.query(query);
+
+          let html = `<div style="background-color: #eeeeee;padding: 20px; width: 400px;">
+          <div align="center" style="padding-top:20px;padding-bottom:40px"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/logodos.png" style="height:100px"/></div>
+          <p>Su compra ha sido exitosa.</p>
+
+          <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
+          <br>
+          <p style="display: inline-flex">Fecha: ${fecha_ida}</p>
+          <br>
+          <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
+          <br>
+          <img src="${qrCodeImg}" alt="Código QR"/>
+          
+          <div style="padding-top:20px;padding-bottom:20px"><hr></div>
+          <p style="font-size:10px">Recibiste éste correo porque las preferencias de correo electrónico se configuraron para recibir notificaciones del Museo Casa Kahlo.</p>
+          <p style="font-size:10px">Te pedimos que no respondas a este correo electrónico. Si tienes alguna pregunta sobre tu cuenta, contáctanos a través de la aplicación.</p>
+          
+          <p style="font-size:10px;padding-top:20px">Copyright©2025 Museo Casa Kahlo.Todos los derechos reservados.</p></div>`;
+
+          let message = {
+              from: process.env.MAIL,
+              to: process.env.MAIL,
+              subject: "Compra exitosa",
+              text: "",
+              html: `${html}`,
+          }
+
+          const info = await mailer.sendMail(message);
+          console.log('Email enviado al admin:', info);
+
+          message = {
+              from: process.env.MAIL,
+              to: correo,
+              subject: "Compra exitosa",
+              text: "",
+              html: `${html}`,
+          }
+
+          const info2 = await mailer.sendMail(message);
+          console.log('Email enviado al cliente:', info2);
+
+          console.log(`✅ Venta creada exitosamente desde charge.succeeded: ${id_reservacion}, viajeTourId: ${viajeTourId}`);
+          
+        } catch (error) {
+          console.error('Error procesando pago en webhook (charge.succeeded):', error);
+        }
+      } else {
+        console.log('🔍 Charge sin metadata relevante');
+      }
+      break;
+    
+    case 'payment_intent.succeeded':
+      const paymentIntent_success = event.data.object;
+      console.log('💰 Payment Intent succeeded:', paymentIntent_success.id);
+      console.log('PaymentIntent metadata:', paymentIntent_success.metadata);
+      // Similar logic could be added here if needed
+      break;
+    
     case 'payment_intent.payment_failed':
       const paymentIntent = event.data.object;
       console.log('❌ Payment failed:', paymentIntent.id);
@@ -764,6 +964,16 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
 
   // Return a 200 response to acknowledge receipt of the event
   res.json({received: true});
+});
+
+// Endpoint de prueba simple para verificar conectividad
+app.get('/stripe/webhook-test', (req, res) => {
+  console.log('🧪 TEST ENDPOINT ALCANZADO');
+  res.json({ 
+    message: 'Webhook endpoint está funcionando', 
+    timestamp: new Date().toISOString(),
+    secret_configured: !!process.env.STRIPE_WEBHOOK_SECRET
+  });
 });
 
 //la feha esta definida por AAAA-MM-DD y la hora desde 00 hasta 23

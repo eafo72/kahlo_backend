@@ -56,7 +56,7 @@ app.use((req, res, next) => {
   const userAgent = req.headers['user-agent']?.toLowerCase() || '';
   
   // Permitir todos los user-agents para webhooks de Stripe
-  if (req.originalUrl.startsWith('/stripe/webhook')) {
+  if (req.originalUrl.startsWith('/stripe/webhook') || req.originalUrl.startsWith('/venta/stripe/webhook')) {
     console.log('[✅ WEBHOOK STRIPE] User-Agent permitido:', userAgent);
     return next();
   }
@@ -188,6 +188,9 @@ app.use('/admin/viaje-tour', viajeTourRoutes)
 app.use('/cliente/comentario', comentarioRoutes)
 app.use('/venta', ventaRoutes)
 app.use('/photos', photosRoutes)
+
+// Stripe webhook endpoint directo (sin prefijo /venta)
+app.use('/stripe', ventaRoutes)
 
 app.get('/', (req, res) => res.send('KAHLO API'))
 
