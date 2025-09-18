@@ -553,6 +553,33 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
   }
 });
 
+// Endpoint adicional para testing directo del webhook de Stripe
+app.post('/stripe/webhook-debug', express.raw({type: 'application/json'}), async (req, res) => {
+  console.log('🐛 WEBHOOK DEBUG ENDPOINT ALCANZADO');
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('Method:', req.method);
+  console.log('URL:', req.originalUrl);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('Body type:', typeof req.body);
+  console.log('Body length:', req.body ? req.body.length : 'No body');
+  console.log('Content-Type:', req.headers['content-type']);
+  console.log('Stripe-Signature:', req.headers['stripe-signature'] ? 'Presente' : 'Ausente');
+  
+  // Intentar parsear como JSON para ver qué contiene
+  try {
+    const jsonBody = JSON.parse(req.body.toString());
+    console.log('Parsed JSON:', JSON.stringify(jsonBody, null, 2));
+  } catch (err) {
+    console.log('No se pudo parsear como JSON:', err.message);
+  }
+  
+  res.status(200).json({ 
+    received: true, 
+    timestamp: new Date().toISOString(),
+    message: 'Webhook debug recibido correctamente'
+  });
+});
+
 app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
   console.log('� WEBHOOK ENDPOINT ALCANZADO - TIMESTAMP:', new Date().toISOString());
   console.log('�🔄 Webhook recibido!');
