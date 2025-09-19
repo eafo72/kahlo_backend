@@ -489,7 +489,7 @@ app.post('/crear', async (req, res) => {
 
         <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
         <br>
-        <p style="display: inline-flex">Fecha: ${fecha_ida}</p>
+        <p style="display: inline-flex">Fecha: \$\{fecha_ida_formateada\}</p>
         <br>
         <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
         <br>
@@ -756,7 +756,7 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
 
           <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
           <br>
-          <p style="display: inline-flex">Fecha: ${fecha_ida}</p>
+          <p style="display: inline-flex">Fecha: \$\{fecha_ida_formateada\}</p>
           <br>
           <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
           <br>
@@ -948,7 +948,7 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
 
           <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
           <br>
-          <p style="display: inline-flex">Fecha: ${fecha_ida}</p>
+          <p style="display: inline-flex">Fecha: \$\{fecha_ida_formateada\}</p>
           <br>
           <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
           <br>
