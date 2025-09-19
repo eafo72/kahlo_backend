@@ -610,9 +610,12 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
     case 'checkout.session.completed':
       const session = event.data.object;
       console.log('💰 Payment succeeded (checkout.session.completed):', session.id);
+      console.log('📊 Session completa:', JSON.stringify(session, null, 2));
+      console.log('🔍 Metadata:', session.metadata);
       
       // Ejecutar la misma lógica que el endpoint /crear
       if (session.metadata) {
+        console.log('✅ Metadata encontrada, procesando...');
         try {
           const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = session.metadata;
           let fecha_ida_original = session.metadata.fecha_ida; // Variable separada para evitar conflictos
@@ -792,6 +795,9 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
         } catch (error) {
           console.error('Error procesando pago en webhook:', error);
         }
+      } else {
+        console.log('❌ No hay metadata en checkout.session.completed');
+        console.log('📊 Session sin metadata:', JSON.stringify(session, null, 2));
       }
       break;
     
