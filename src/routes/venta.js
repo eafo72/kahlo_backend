@@ -1395,7 +1395,7 @@ app.put('/checkin', async (req, res) => {
         }
 
         //revisamos si corresponde el id de reservacion con el id viaje tour
-        query = `SELECT * FROM venta WHERE id_reservacion = '${idReservacion}' AND viajeTour_id = ${viajeTour_id}`;
+        query = `SELECT viajeTour.fecha_ida, venta.* FROM venta INNER JOIN viajeTour ON venta.viajeTour_id = viajeTour.id WHERE id_reservacion = '${idReservacion}' AND viajeTour_id = ${viajeTour_id}`;
         let correspondeIdVT = await db.pool.query(query);
         if (correspondeIdVT[0].length < 1) {
             return res.status(200).json({ error: true, msg: "La reservación no corresponde al tour seleccionado" });
@@ -1437,7 +1437,9 @@ app.put('/checkin', async (req, res) => {
             data: {
                 checkin_actual: nuevoCheckin,
                 total_boletos: noBoletos,
-                boletos_restantes: noBoletos - nuevoCheckin
+                boletos_restantes: noBoletos - nuevoCheckin,
+                fecha_ida: venta.fecha_ida,
+                nombre_cliente: venta.nombre_cliente
             }
         });
 
