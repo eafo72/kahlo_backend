@@ -1099,6 +1099,50 @@ app.get('/reservacion/:id', async (req, res) => {
     }
 })
 
+// Endpoint para obtener datos de venta por sessionId de Stripe
+app.get('/stripe/session/:sessionId', async (req, res) => {
+    try {
+        let sessionId = req.params.sessionId;
+
+        let query = `SELECT 
+                        id_reservacion, 
+                        viajeTour_id,
+                        session_id,
+                        id,
+                        no_boletos,
+                        total,
+                        nombre_cliente,
+                        correo,
+                        fecha_compra,
+                        created_at
+                        FROM venta 
+                        WHERE session_id = '${sessionId}';`;
+
+        let venta = await db.pool.query(query);
+        
+        if (venta[0].length === 0) {
+            return res.status(404).json({ 
+                msg: 'No se encontró ninguna venta con ese session ID', 
+                error: true, 
+                sessionId: sessionId 
+            });
+        }
+
+        res.status(200).json({ 
+            error: false, 
+            data: venta[0][0],
+            msg: 'Venta encontrada exitosamente'
+        });
+
+    } catch (error) {
+        res.status(500).json({ 
+            msg: 'Hubo un error obteniendo los datos', 
+            error: true, 
+            details: error 
+        });
+    }
+})
+
 app.get('/landingInfo/:id', async (req, res) => {
     try {
         let reservacion = req.params.id;
