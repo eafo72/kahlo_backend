@@ -614,8 +614,9 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
       // Ejecutar la misma lógica que el endpoint /crear
       if (session.metadata) {
         try {
-          const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, horaCompleta, total } = session.metadata;
+          const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = session.metadata;
           let fecha_ida_original = session.metadata.fecha_ida; // Variable separada para evitar conflictos
+          let horaCompleta = session.metadata.horaCompleta; // Variable separada para poder modificarla
           
           let today = new Date();
           let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
