@@ -1394,7 +1394,6 @@ app.put('/checkin', async (req, res) => {
             return res.status(200).json({ error: true, msg: "El id de reservacion no existe" });
         }
 
-
         //revisamos si corresponde el id de reservacion con el id viaje tour
         query = `SELECT * FROM venta WHERE id_reservacion = '${idReservacion}' AND viajeTour_id = ${viajeTour_id}`;
         let correspondeIdVT = await db.pool.query(query);
@@ -1402,23 +1401,48 @@ app.put('/checkin', async (req, res) => {
             return res.status(200).json({ error: true, msg: "La reservación no corresponde al tour seleccionado" });
         }
 
+        // Obtener datos actuales de la venta
+        let venta = correspondeIdVT[0][0];
+        let checkinActual = venta.checkin || 0; // Si es null, usar 0
+        let noBoletos = parseInt(venta.no_boletos);
+        
+        // Calcular nuevo valor de checkin
+        let nuevoCheckin = checkinActual + 1;
+        
+        // Verificar si excede el número de boletos comprados
+        if (nuevoCheckin > noBoletos) {
+            return res.status(200).json({ 
+                error: true, 
+                msg: `No se puede hacer checkin. Ya se han registrado ${checkinActual} de ${noBoletos} boletos comprados.`
+            });
+        }
 
         let today = new Date();
         let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
         let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
         let fecha = date + ' ' + time;
 
+        // Actualizar checkin incrementando en 1
         query = `UPDATE venta SET
-                        checkin = 1,    
-                        updated_at      = '${fecha}' 
+                        checkin = ${nuevoCheckin},    
+                        updated_at = '${fecha}' 
                         WHERE id_reservacion = '${idReservacion}'`;
 
         let result = await db.pool.query(query);
         result = result[0];
 
-        res.status(200).json({ error: false, msg: "Checkin realizado con éxito" })
+        res.status(200).json({ 
+            error: false, 
+            msg: "Checkin realizado con éxito",
+            data: {
+                checkin_actual: nuevoCheckin,
+                total_boletos: noBoletos,
+                boletos_restantes: noBoletos - nuevoCheckin
+            }
+        });
 
     } catch (error) {
+        console.log(error);
         res.status(400).json({ error: true, details: error })
     }
 })
