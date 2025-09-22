@@ -220,7 +220,7 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         console.log('[HORARIOS] diaSeleccionado:', diaSeleccionado);
 
         //buscamos los horarios del tour
-        let query = `SELECT * FROM fecha WHERE tour_id=${tourId} AND dia = '${diaSeleccionado}'`;
+        let query = `SELECT * FROM fecha WHERE tour_id=${tourId} AND dia = '${diaSeleccionado}' ORDER BY dia, hora_salida ASC`;
         console.log('[HORARIOS] query horarios:', query);
         let horariosResult = await db.pool.query(query);
         let horarios = horariosResult[0];
