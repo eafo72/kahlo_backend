@@ -10,9 +10,9 @@ const helperName = require('../helpers/name')
 const QRCode = require('qrcode')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
-function addHoursToDate(objDate, intHours) {
+function addMinutesToDate(objDate, intMinutes) {
     var numberOfMlSeconds = objDate.getTime();
-    var addMlSeconds = (intHours * 60) * 60000;
+    var addMlSeconds = intMinutes * 60000;
     var newDateObj = new Date(numberOfMlSeconds + addMlSeconds);
     return newDateObj;
 }
@@ -377,7 +377,7 @@ app.post('/crear', async (req, res) => {
                 console.log(fecha_ida);
 
                 //formateo de fecha regreso
-                const newfecha = addHoursToDate(new Date(fecha_ida), parseInt(duracion));
+                const newfecha = addMinutesToDate(new Date(fecha_ida), parseInt(duracion));
                 const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
                 console.log(fecha_regreso);
 
@@ -656,7 +656,7 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
             let fecha_ida_formateada = fecha_ida_original + ' ' + horaCompleta;
 
             //formateo de fecha regreso
-            const newfecha = addHoursToDate(new Date(fecha_ida_formateada), parseInt(duracion));
+            const newfecha = addMinutesToDate(new Date(fecha_ida_formateada), parseInt(duracion));
             const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
 
             if (disponibilidad.length == 0) {
@@ -951,7 +951,7 @@ app.post('/test/webhook-complete', express.json(), async (req, res) => {
               console.log('📅 Fecha ida formateada:', fechaIdaFormateada);
 
               //formateo de fecha regreso
-              const newfecha = addHoursToDate(new Date(fechaIdaFormateada), parseInt(duracion));
+              const newfecha = addMinutesToDate(new Date(fechaIdaFormateada), parseInt(duracion));
               const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
               console.log('📅 Fecha regreso calculada:', fecha_regreso);
 

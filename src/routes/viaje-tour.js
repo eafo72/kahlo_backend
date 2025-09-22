@@ -1,3 +1,10 @@
+// Utilidad para sumar minutos a una fecha
+function addMinutesToDate(objDate, intMinutes) {
+    var numberOfMlSeconds = objDate.getTime();
+    var addMlSeconds = intMinutes * 60000;
+    var newDateObj = new Date(numberOfMlSeconds + addMlSeconds);
+    return newDateObj;
+}
 /* Importing the express module and creating an instance of it. */
 const express = require('express')
 const app = express.Router()
@@ -267,12 +274,21 @@ app.get('/historialByEmpresa/:emId/admin/:adId', async (req, res) => {
 
 app.post('/crear', async (req, res) => {
     try {
-        const { fecha_ida, fecha_regreso, max_pasajeros, min_pasajeros, lugares_disp, tour_id, guia_id } = req.body
+        const { fecha_ida, max_pasajeros, min_pasajeros, lugares_disp, tour_id, guia_id } = req.body;
 
         let today = new Date();
         let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
         let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
         let fecha = date + ' ' + time;
+
+        // Obtener duración del tour en minutos
+        let queryDuracion = `SELECT duracion FROM tour WHERE id = ${tour_id}`;
+        let resultDuracion = await db.pool.query(queryDuracion);
+        let duracion = resultDuracion[0][0]?.duracion || 0;
+
+        // Calcular fecha_regreso sumando minutos
+        const newfecha = addMinutesToDate(new Date(fecha_ida), parseInt(duracion));
+        const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
 
         let query = `INSERT INTO viajeTour 
                         (fecha_ida, fecha_regreso, max_pasajeros, min_pasajeros, lugares_disp, created_at, updated_at, tour_id, guia_id) 
@@ -291,7 +307,6 @@ app.post('/crear', async (req, res) => {
         jwt.sign(payload, process.env.SECRET, { expiresIn: 36000 }, (error, token) => {
             if (error) throw error
             res.status(200).json({ error: false, token: token })
-            //res.json(respuestaDB)
         })
 
     } catch (error) {
