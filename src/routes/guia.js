@@ -450,4 +450,50 @@ app.put('/active', async (req, res) => {
     }
 })
 
+// Login para guías
+app.post('/login', async (req, res) => {
+    try {
+        // aceptar tanto "email" como "correo" por compatibilidad
+        const { email, correo, password } = req.body;
+        const correoUser = email || correo;
+        let errors = Array();
+        if (!correoUser) errors.push({ msg: "El campo correo/email debe de contener un valor" });
+        if (!password) errors.push({ msg: "El campo password debe de contener un valor" });
+        if (errors.length >= 1) {
+            return res.status(400).json({ msg: 'Errores en los parametros', error: true, details: errors });
+        }
+        // Buscar guía activo y que sea guía (isGuia=1)
+        let query = `SELECT * FROM usuario WHERE correo = '${correoUser}' AND status = 1 AND isGuia = 1`;
+        let result = await db.pool.query(query);
+        let rows = result[0];
+        if (rows.length === 0) {
+            return res.status(400).json({ msg: 'El guía no existe o no está activo', error: true });
+        }
+        let guia = rows[0];
+        // Verificar que exista password (si tus guías no tienen password, hay que setear una)
+        if (!guia.password) {
+            return res.status(400).json({ msg: 'No hay contraseña registrada para este guía. Asigna una antes de intentar login.', error: true });
+        }
+        // Comparar password
+        const passCorrecto = await bcryptjs.compare(password, guia.password);
+        if (!passCorrecto) {
+            return res.status(400).json({ msg: 'Password incorrecto', error: true });
+        }
+        // Payload idéntico al login de users.js (para que el front lo trate igual)
+        const payload = {
+            user: {
+                id: guia.id
+            }
+        }
+        // Igual que users.js: mismo secret y mismo expiresIn
+        jwt.sign(payload, process.env.SECRET, { expiresIn: 3600000 }, (error, token) => {
+            if (error) throw error;
+            res.status(200).json({ error: false, token: token });
+        });
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ msg: 'Hubo un error en el servidor', error: true, details: error });
+    }
+});
+
 module.exports = app
