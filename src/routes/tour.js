@@ -81,7 +81,7 @@ app.get('/obtener/:id', async (req, res) => {
         query = `SELECT * FROM foto WHERE tour_id=${tourId}`;
         let images = await db.pool.query(query);
 
-        query = `SELECT * FROM fecha WHERE tour_id=${tourId}`;
+        query = `SELECT * FROM fecha WHERE tour_id=${tourId} ORDER BY dia, hora_salida ASC`;
         let fecha = await db.pool.query(query);
 
         let info = {
