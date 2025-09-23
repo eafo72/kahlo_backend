@@ -27,7 +27,7 @@ module.exports = function generarEmail(data) {
                     </div>
                     <p style="font-size:16px; color:#004d40;">Para acceder al museo presenta tu código QR en cualquier dispositivo móvil o impresión.</p>
                     <div style="text-align:center; margin:20px 0;">
-                      <img src="${data.qr}" alt="Código QR" style="width:120px; height:120px;" />
+                      <img src="cid:qrImage" alt="Código QR" style="width:120px; height:120px;" />
                     </div>
                     <p style="font-size:16px; color:#004d40;">Te recomendamos llegar al museo <b>30 minutos antes</b> de que inicie tu recorrido.</p>
                     <p style="font-size:16px; color:#004d40;">Recuerda que NO hay tolerancia. En caso de retraso, podremos incorporarte en el punto del recorrido donde esté tu grupo o reprogramarte para el siguiente recorrido disponible (guiado o libre), sujeto a disponibilidad.</p>

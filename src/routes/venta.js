@@ -45,8 +45,9 @@ function weekDay(fecha) {
 // Función para generar el código QR
 async function generateQRCode(text) {
     try {
-        const qrCodeDataURL = await QRCode.toDataURL(text);
-        return qrCodeDataURL;
+        // Cambiado a toBuffer para devolver un buffer en lugar de un Data URL
+        const qrCodeBuffer = await QRCode.toBuffer(text);
+        return qrCodeBuffer;
     } catch (err) {
         console.error('Error generating QR Code:', err);
         throw err;
@@ -469,8 +470,7 @@ app.post('/crear', async (req, res) => {
         let id_reservacion = result.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
 
         //creamos el QR
-        const qrCodeImg = await generateQRCode(id_reservacion);
-
+        const qrCodeBuffer = await generateQRCode(id_reservacion);
 
         query = `UPDATE viajeTour SET
                     lugares_disp = '${lugares_disp}'
@@ -490,17 +490,17 @@ app.post('/crear', async (req, res) => {
 
         <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
         <br>
-        <p style="display: inline-flex">Fecha: \$\{fecha_ida_formateada\}</p>
+        <p style="display: inline-flex">Fecha: ${fecha_ida}</p>
         <br>
         <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
         <br>
-        <img src="${qrCodeImg}" alt="Código QR"/>
+        <img src="cid:qrImage" alt="Código QR"/>
         
         <div style="padding-top:20px;padding-bottom:20px"><hr></div>
         <p style="font-size:10px">Recibiste éste correo porque las preferencias de correo electrónico se configuraron para recibir notificaciones del Museo Casa Kahlo.</p>
         <p style="font-size:10px">Te pedimos que no respondas a este correo electrónico. Si tienes alguna pregunta sobre tu cuenta, contáctanos a través de la aplicación.</p>
         
-        <p style="font-size:10px;padding-top:20px">Copyright©2025 Museo Casa Kahlo.Todos los derechos reservados.</p></div>`;
+        <p style="font-size:10px;padding-top:20px">Copyright2025 Museo Casa Kahlo.Todos los derechos reservados.</p></div>`;
 
         let message = {
             from: process.env.MAIL, // sender address
@@ -508,6 +508,11 @@ app.post('/crear', async (req, res) => {
             subject: "Compra exitosa", // Subject line
             text: "", // plain text body
             html: `${html}`, // html body
+            attachments: [{
+                filename: 'qr.png',
+                content: qrCodeBuffer,
+                cid: 'qrImage'
+            }]
         }
 
         const info = await mailer.sendMail(message);
@@ -519,6 +524,11 @@ app.post('/crear', async (req, res) => {
             subject: "Compra exitosa", // Subject line
             text: "", // plain text body
             html: `${html}`, // html body
+            attachments: [{
+                filename: 'qr.png',
+                content: qrCodeBuffer,
+                cid: 'qrImage'
+            }]
         }
 
         const info2 = await mailer.sendMail(message);
@@ -556,7 +566,7 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
 
 // Endpoint adicional para testing directo del webhook de Stripe
 app.post('/stripe/webhook-debug', express.raw({ type: 'application/json' }), async (req, res) => {
-    console.log('🐛 WEBHOOK DEBUG ENDPOINT ALCANZADO');
+    console.log(' WEBHOOK DEBUG ENDPOINT ALCANZADO');
     console.log('Timestamp:', new Date().toISOString());
     console.log('Method:', req.method);
     console.log('URL:', req.originalUrl);
@@ -582,8 +592,8 @@ app.post('/stripe/webhook-debug', express.raw({ type: 'application/json' }), asy
 });
 
 app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-    console.log('� WEBHOOK ENDPOINT ALCANZADO - TIMESTAMP:', new Date().toISOString());
-    console.log('�🔄 Webhook recibido!');
+    console.log(' WEBHOOK ENDPOINT ALCANZADO - TIMESTAMP:', new Date().toISOString());
+    console.log('');
     console.log('Headers:', req.headers);
     console.log('Body length:', req.body ? req.body.length : 'No body');
     console.log('Method:', req.method);
@@ -599,10 +609,11 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
     try {
         event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-        console.log('✅ Webhook verificado exitosamente');
+        console.log('');
         console.log('Tipo de evento:', event.type);
     } catch (err) {
-        console.log(`⚠️  Webhook signature verification failed.`, err.message);
+        console.log('');
+        console.log('Webhook signature verification failed.', err.message);
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
@@ -610,13 +621,17 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
     switch (event.type) {
         case 'checkout.session.completed':
             const session = event.data.object;
-            console.log('💰 Payment succeeded (checkout.session.completed):', session.id);
-            console.log('📊 Session completa:', JSON.stringify(session, null, 2));
-            console.log('🔍 Metadata:', session.metadata);
+            console.log('');
+            console.log('Payment succeeded (checkout.session.completed):', session.id);
+            console.log('');
+            console.log('Session completa:', JSON.stringify(session, null, 2));
+            console.log('');
+            console.log('Metadata:', session.metadata);
 
             // Ejecutar la misma lógica que el endpoint /crear
             if (session.metadata) {
-                console.log('✅ Metadata encontrada, procesando...');
+                console.log('');
+                console.log('Metadata encontrada, procesando...');
                 try {
                     const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = session.metadata;
                     let fecha_ida_original = session.metadata.fecha_ida; // Variable separada para evitar conflictos
@@ -737,7 +752,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     let id_reservacion = result.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
 
                     //creamos el QR
-                    const qrCodeImg = await generateQRCode(id_reservacion);
+                    const qrCodeBuffer = await generateQRCode(id_reservacion);
 
                     query = `UPDATE viajeTour SET
                       lugares_disp = '${lugares_disp}'
@@ -766,21 +781,21 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                         tiposBoletos = { "General": no_boletos };
                     }
 
-                    // 🔹 Precios fijos
+                    // 
                     const precios = {
                         tipoA: 270,
                         tipoB: 165,
                         tipoC: 65
                     };
 
-                    // 🔹 Nombres legibles
+                    // 
                     const nombres = {
                         tipoA: "Entrada General",
                         tipoB: "Ciudadano Mexicano",
                         tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
                     };
 
-                    // 🔹 Convertimos el objeto recibido en array
+                    // 
                     let tiposBoletosArray = Object.entries(tiposBoletos).map(([tipo, cantidad]) => {
                         return {
                             nombre: nombres[tipo] || tipo,   // usa nombre bonito si existe
@@ -789,7 +804,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                         };
                     });
 
-                    // 🔹 Armamos la tabla
+                    // 
                     let tablaBoletos = `
   <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
     <tr style="background-color:#f5f5f5">
@@ -833,7 +848,6 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                         boletos: no_boletos,
                         tablaBoletos: tablaBoletos,
                         total: total,
-                        qr: qrCodeImg,
                         ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
                     };
 
@@ -846,6 +860,11 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                         subject: "¡Confirmación de compra - Museo Casa Kahlo!",
                         text: "",
                         html: emailHtml,
+                        attachments: [{
+                            filename: 'qr.png',
+                            content: qrCodeBuffer,
+                            cid: 'qrImage'
+                        }]
                     }
 
                     const info = await mailer.sendMail(message);
@@ -857,42 +876,53 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                         subject: "¡Confirmación de compra - Museo Casa Kahlo!",
                         text: "",
                         html: emailHtml,
+                        attachments: [{
+                            filename: 'qr.png',
+                            content: qrCodeBuffer,
+                            cid: 'qrImage'
+                        }]
                     }
 
                     const info2 = await mailer.sendMail(message);
                     console.log('Email enviado al cliente:', info2);
 
 
-                    console.log(`✅ Venta creada exitosamente: ${id_reservacion}, viajeTourId: ${viajeTourId}`);
+                    console.log(` Venta creada exitosamente: ${id_reservacion}, viajeTourId: ${viajeTourId}`);
 
                 } catch (error) {
                     console.error('Error procesando pago en webhook:', error);
                 }
             } else {
-                console.log('❌ No hay metadata en checkout.session.completed');
-                console.log('📊 Session sin metadata:', JSON.stringify(session, null, 2));
+                console.log('');
+                console.log(' No hay metadata en checkout.session.completed');
+                console.log('');
+                console.log('Session sin metadata:', JSON.stringify(session, null, 2));
             }
             break;
 
         // case 'charge.succeeded':
         //   // COMENTADO: No necesario, ya se maneja en checkout.session.completed
-        //   console.log('🔍 Charge succeeded event ignorado - ya procesado en checkout.session.completed');
+        //   console.log('');
+        //   console.log('Charge succeeded event ignorado - ya procesado en checkout.session.completed');
         //   break;
 
         case 'payment_intent.succeeded':
             const paymentIntent_success = event.data.object;
-            console.log('💰 Payment Intent succeeded:', paymentIntent_success.id);
+            console.log('');
+            console.log('Payment Intent succeeded:', paymentIntent_success.id);
             console.log('PaymentIntent metadata:', paymentIntent_success.metadata);
             // Similar logic could be added here if needed
             break;
 
         case 'payment_intent.payment_failed':
             const paymentIntent = event.data.object;
-            console.log('❌ Payment failed:', paymentIntent.id);
+            console.log('');
+            console.log('Payment failed:', paymentIntent.id);
             break;
 
         default:
-            console.log(`🤷‍♀️ Unhandled event type ${event.type}`);
+            console.log('');
+            console.log('Unhandled event type ${event.type}');
     }
 
     // Return a 200 response to acknowledge receipt of the event
@@ -901,7 +931,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
 // Endpoint de prueba simple para verificar conectividad
 app.get('/stripe/webhook-test', (req, res) => {
-    console.log('🧪 TEST ENDPOINT ALCANZADO');
+    console.log('');
     res.json({
         message: 'Webhook endpoint está funcionando',
         timestamp: new Date().toISOString(),
@@ -911,7 +941,8 @@ app.get('/stripe/webhook-test', (req, res) => {
 
 // Endpoint de test básico sin middleware de parsing
 app.post('/test/webhook-basic', (req, res) => {
-    console.log('🧪 WEBHOOK TEST BÁSICO - Sin parsing');
+    console.log('');
+    console.log('');
     console.log('Headers:', req.headers);
     console.log('Raw body type:', typeof req.body);
 
@@ -925,7 +956,8 @@ app.post('/test/webhook-basic', (req, res) => {
 
 // Endpoint de test separado para webhook con express.json()
 app.post('/test/webhook-simple', express.json(), (req, res) => {
-    console.log('🧪 WEBHOOK TEST SIMPLE - Solo logging');
+    console.log('');
+    console.log('');
     console.log('Headers:', JSON.stringify(req.headers, null, 2));
     console.log('Body:', JSON.stringify(req.body, null, 2));
 
@@ -939,19 +971,23 @@ app.post('/test/webhook-simple', express.json(), (req, res) => {
 
 // Endpoint de test completo para simular toda la lógica del webhook
 app.post('/test/webhook-complete', express.json(), async (req, res) => {
-    console.log('🧪 WEBHOOK TEST COMPLETO - Simulando lógica completa');
+    console.log('');
+    console.log('');
     console.log('Body recibido:', JSON.stringify(req.body, null, 2));
 
     try {
         // Simular la estructura de un evento de Stripe
         const event = req.body;
 
+        console.log('');
         console.log('Tipo de evento test:', event.type);
 
         switch (event.type) {
             case 'checkout.session.completed':
                 const session = event.data.object;
-                console.log('💰 TEST Payment succeeded (checkout.session.completed):', session.id);
+                console.log('');
+                console.log('Payment succeeded (checkout.session.completed):', session.id);
+                console.log('');
                 console.log('Session metadata:', session.metadata);
 
                 if (session.metadata) {
@@ -959,13 +995,15 @@ app.post('/test/webhook-complete', express.json(), async (req, res) => {
                         const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, horaCompleta, total } = session.metadata;
                         let fechaIdaOriginal = session.metadata.fecha_ida; // Usar variable con nombre diferente
 
-                        console.log('📊 Datos extraídos:', {
+                        console.log('');
+                        console.log('Datos extraídos:', {
                             no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, fecha_ida: fechaIdaOriginal, horaCompleta, total
                         });
 
                         // Validar que tengamos los datos mínimos necesarios
                         if (!no_boletos || !cliente_id || !tourId || !fechaIdaOriginal || !horaCompleta) {
-                            console.error('❌ Datos incompletos:', { no_boletos, cliente_id, tourId, fecha_ida: fechaIdaOriginal, horaCompleta });
+                            console.error('');
+                            console.error('Datos incompletos:', { no_boletos, cliente_id, tourId, fecha_ida: fechaIdaOriginal, horaCompleta });
                             return res.status(400).json({
                                 error: 'Datos incompletos',
                                 required: ['no_boletos', 'cliente_id', 'tourId', 'fecha_ida', 'horaCompleta'],
@@ -982,14 +1020,16 @@ app.post('/test/webhook-complete', express.json(), async (req, res) => {
                         let query = ``;
                         let viajeTourId = null;
 
-                        console.log('🔍 Buscando tour con ID:', tourId);
+                        console.log('');
+                        console.log('Buscando tour con ID:', tourId);
 
                         //info tour para calcular fecha de regreso
                         query = `SELECT * FROM tour WHERE id = ${tourId} `;
                         let tour = await db.pool.query(query);
 
                         if (tour[0].length === 0) {
-                            console.error('❌ Tour no encontrado con ID:', tourId);
+                            console.error('');
+                            console.error('Tour no encontrado con ID:', tourId);
                             return res.status(400).json({ error: 'Tour no encontrado', tourId });
                         }
 
@@ -997,7 +1037,8 @@ app.post('/test/webhook-complete', express.json(), async (req, res) => {
                         let duracion = tour.duracion;
                         let max_pasajeros = tour.max_pasajeros;
 
-                        console.log('✅ Tour encontrado:', { id: tour.id, nombre: tour.nombre, max_pasajeros, duracion });
+                        console.log('');
+                        console.log('Tour encontrado:', { id: tour.id, nombre: tour.nombre, max_pasajeros, duracion });
 
                         try {
                             let hora = horaCompleta.split(':');
@@ -1009,27 +1050,32 @@ app.post('/test/webhook-complete', express.json(), async (req, res) => {
                       AND HOUR(CAST(fecha_ida AS TIME)) = '${hora[0]}'
                       AND tour_id = ${tourId};`;
 
-                            console.log('🔍 Query viajeTour:', query);
+                            console.log('');
+                            console.log('Query viajeTour:', query);
 
                             let disponibilidad = await db.pool.query(query);
                             disponibilidad = disponibilidad[0];
 
-                            console.log('📅 Disponibilidad encontrada:', disponibilidad.length > 0 ? 'Sí' : 'No');
+                            console.log('');
+                            console.log('Disponibilidad encontrada:', disponibilidad.length > 0 ? 'Sí' : 'No');
 
                             if (hora.length < 3) {
                                 horaCompleta += ':00'
                             }
                             //formateo de fechaida
                             let fechaIdaFormateada = fechaIdaOriginal + ' ' + horaCompleta;
-                            console.log('📅 Fecha ida formateada:', fechaIdaFormateada);
+                            console.log('');
+                            console.log('Fecha ida formateada:', fechaIdaFormateada);
 
                             //formateo de fecha regreso
                             const newfecha = addMinutesToDate(new Date(fechaIdaFormateada), parseInt(duracion));
                             const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
-                            console.log('📅 Fecha regreso calculada:', fecha_regreso);
+                            console.log('');
+                            console.log('Fecha regreso calculada:', fecha_regreso);
 
                             if (disponibilidad.length == 0) {
-                                console.log('🆕 Creando nuevo viajeTour');
+                                console.log('');
+                                console.log('Creando nuevo viajeTour');
 
                                 query = `SELECT * FROM tour WHERE id = ${tourId}`;
                                 let result = await db.pool.query(query);
@@ -1037,7 +1083,8 @@ app.post('/test/webhook-complete', express.json(), async (req, res) => {
 
                                 let guia = result.guias;
                                 guia = JSON.parse(guia);
-                                console.log('👨‍🏫 Guía asignado:', guia[0]);
+                                console.log('');
+                                console.log('Guía asignado:', guia[0]);
 
                                 query = `INSERT INTO viajeTour 
                       (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
@@ -1049,16 +1096,19 @@ app.post('/test/webhook-complete', express.json(), async (req, res) => {
 
                                 viajeTourId = result.insertId;
                                 seCreoRegistro = true;
-                                console.log('✅ Nuevo viajeTour creado con ID:', viajeTourId);
+                                console.log('');
+                                console.log('Nuevo viajeTour creado con ID:', viajeTourId);
 
                             } else {
                                 viajeTourObj = disponibilidad[0];
                                 viajeTourId = disponibilidad[0].id;
-                                console.log('✅ Usando viajeTour existente con ID:', viajeTourId);
+                                console.log('');
+                                console.log('Usando viajeTour existente con ID:', viajeTourId);
                             }
 
                         } catch (error) {
-                            console.log('❌ Error en creacion viajeTour:', error);
+                            console.log('');
+                            console.log('Error en creacion viajeTour:', error);
                             return res.status(500).json({ error: 'Error creando viajeTour', details: error.message });
                         }
 
@@ -1070,10 +1120,12 @@ app.post('/test/webhook-complete', express.json(), async (req, res) => {
                             lugares_disp = viajeTourObj.lugares_disp - parseInt(no_boletos);
                         }
 
-                        console.log('🎫 Lugares disponibles después de la compra:', lugares_disp);
+                        console.log('');
+                        console.log('Lugares disponibles después de la compra:', lugares_disp);
 
                         if (lugares_disp < 0) {
-                            console.error('❌ No hay suficientes lugares disponibles');
+                            console.error('');
+                            console.error('No hay suficientes lugares disponibles');
                             return res.status(400).json({
                                 error: 'No hay suficientes lugares disponibles',
                                 disponibles: seCreoRegistro ? max_pasajeros : viajeTourObj.lugares_disp,
@@ -1081,7 +1133,8 @@ app.post('/test/webhook-complete', express.json(), async (req, res) => {
                             });
                         }
 
-                        console.log('💾 Insertando venta en la base de datos...');
+                        console.log('');
+                        console.log('Insertando venta en la base de datos...');
 
                         query = `INSERT INTO venta 
                             (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id) 
@@ -1091,36 +1144,43 @@ app.post('/test/webhook-complete', express.json(), async (req, res) => {
                         let result = await db.pool.query(query);
                         result = result[0];
 
-                        console.log('✅ Venta insertada con ID:', result.insertId);
+                        console.log('');
+                        console.log('Venta insertada con ID:', result.insertId);
 
                         query = `SELECT * FROM usuario WHERE id = ${cliente_id}`;
                         let client = await db.pool.query(query);
                         client = client[0];
 
                         if (client.length == 0) {
-                            console.error('❌ Cliente no encontrado con ID:', cliente_id);
+                            console.error('');
+                            console.error('Cliente no encontrado con ID:', cliente_id);
                             return res.status(400).json({ error: 'Cliente no encontrado', cliente_id });
                         }
 
                         client = client[0];
-                        console.log('👤 Cliente encontrado:', client.nombres, client.apellidos);
+                        console.log('');
+                        console.log('Cliente encontrado:', client.nombres, client.apellidos);
 
                         let id_reservacion = result.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
-                        console.log('🎟️ ID de reservación generado:', id_reservacion);
+                        console.log('');
+                        console.log('ID de reservación generado:', id_reservacion);
 
                         //creamos el QR
-                        const qrCodeImg = await generateQRCode(id_reservacion);
-                        console.log('📱 QR Code generado');
+                        const qrCodeBuffer = await generateQRCode(id_reservacion);
+                        console.log('');
+                        console.log('QR Code generado');
 
                         query = `UPDATE viajeTour SET lugares_disp = '${lugares_disp}' WHERE id = ${viajeTourId}`;
                         await db.pool.query(query);
-                        console.log('✅ Lugares disponibles actualizados');
+                        console.log('');
+                        console.log('Lugares disponibles actualizados');
 
                         query = `UPDATE venta SET id_reservacion = '${id_reservacion}' WHERE id = ${result.insertId}`;
                         await db.pool.query(query);
-                        console.log('✅ ID de reservación actualizado en venta');
+                        console.log('');
+                        console.log('ID de reservación actualizado en venta');
 
-                        console.log(`🎉 TEST: Venta creada exitosamente: ${id_reservacion}, viajeTourId: ${viajeTourId}`);
+                        console.log(` Venta creada exitosamente: ${id_reservacion}, viajeTourId: ${viajeTourId}`);
 
                         return res.json({
                             success: true,
@@ -1134,21 +1194,25 @@ app.post('/test/webhook-complete', express.json(), async (req, res) => {
                         });
 
                     } catch (error) {
-                        console.error('❌ Error procesando pago en webhook test:', error);
+                        console.error('');
+                        console.error('Error procesando pago en webhook test:', error);
                         return res.status(500).json({ error: 'Error procesando webhook', details: error.message });
                     }
                 } else {
-                    console.log('⚠️ No hay metadata en la session');
+                    console.log('');
+                    console.log(' No hay metadata en la session');
                     return res.status(400).json({ error: 'No metadata found in session' });
                 }
                 break;
 
             default:
-                console.log(`🤷‍♀️ Tipo de evento no manejado en test: ${event.type}`);
+                console.log('');
+                console.log('Tipo de evento no manejado en test: ${event.type}');
                 return res.json({ message: 'Evento recibido pero no procesado', type: event.type });
         }
     } catch (error) {
-        console.error('❌ Error en webhook test:', error);
+        console.error('');
+        console.error('Error en webhook test:', error);
         return res.status(500).json({ error: 'Error en webhook test', details: error.message });
     }
 });
@@ -1311,6 +1375,11 @@ app.put('/setFecha', async (req, res) => {
                         FROM tour
                         WHERE id = ${tourId}`;
                     let result = await db.pool.query(query);
+
+                    if (result[0].length == 0) {
+                        return res.status(400).json({ msg: "Error en la busquda del tour por id", error: true, details: 'nungun registro encontrado' });
+                    }
+
                     result = result[0][0];
 
                     let guia = result.guias;
