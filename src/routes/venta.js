@@ -627,8 +627,23 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
             throw new Error(`Campos requeridos faltantes: ${missingFields.join(', ')}`);
           }
 
-          const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total, fecha_ida, horaCompleta } = session.metadata;
-          const fechaIdaOriginal = fecha_ida; // Asignamos el valor a la variable que usamos en el código
+          // Extraer todos los datos necesarios de una vez
+          const { 
+            no_boletos, 
+            tipos_boletos, 
+            nombre_cliente, 
+            cliente_id, 
+            correo, 
+            tourId, 
+            total, 
+            fecha_ida: fechaIdaOriginal, // Renombrar directamente en la desestructuración
+            horaCompleta 
+          } = session.metadata;
+
+          // Validación adicional para la fecha
+          if (!fechaIdaOriginal) {
+            throw new Error('La fecha es requerida y no está presente');
+          }
 
           console.log('📊 Datos extraídos de metadata:', {
             no_boletos,
@@ -846,7 +861,7 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
 
           <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
           <br>
-          <p style="display: inline-flex">Fecha: \$\{fecha_ida_formateada\}</p>
+          <p style="display: inline-flex">Fecha: ${fechaIdaFormateada}</p>
           <br>
           <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
           <br>
