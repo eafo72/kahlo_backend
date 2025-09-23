@@ -9,7 +9,6 @@ const mailer = require('../controller/mailController')
 const helperName = require('../helpers/name')
 const QRCode = require('qrcode')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const emailTemplate = require('../templates/emailTemplate-correo_confirmacion_compra');
 
 function addMinutesToDate(objDate, intMinutes) {
     var numberOfMlSeconds = objDate.getTime();
@@ -618,44 +617,9 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
       if (session.metadata) {
         console.log('✅ Metadata encontrada, procesando...');
         try {
-          // Validar que todos los campos necesarios estén presentes
-          const requiredFields = ['no_boletos', 'tipos_boletos', 'nombre_cliente', 'cliente_id', 'correo', 'tourId', 'total', 'fecha_ida', 'horaCompleta'];
-          const missingFields = requiredFields.filter(field => !session.metadata[field]);
-          
-          if (missingFields.length > 0) {
-            console.error('❌ Faltan campos requeridos:', missingFields);
-            throw new Error(`Campos requeridos faltantes: ${missingFields.join(', ')}`);
-          }
-
-          // Extraer todos los datos necesarios de una vez
-          const { 
-            no_boletos, 
-            tipos_boletos, 
-            nombre_cliente, 
-            cliente_id, 
-            correo, 
-            tourId, 
-            total, 
-            fecha_ida: fechaIdaOriginal, // Renombrar directamente en la desestructuración
-            horaCompleta 
-          } = session.metadata;
-
-          // Validación adicional para la fecha
-          if (!fechaIdaOriginal) {
-            throw new Error('La fecha es requerida y no está presente');
-          }
-
-          console.log('📊 Datos extraídos de metadata:', {
-            no_boletos,
-            tipos_boletos: tipos_boletos ? tipos_boletos.substring(0, 100) + '...' : 'undefined',
-            nombre_cliente,
-            cliente_id,
-            correo,
-            tourId,
-            fecha_ida_original,
-            horaCompleta,
-            total
-          });
+          const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = session.metadata;
+          let fecha_ida_original = session.metadata.fecha_ida; // Variable separada para evitar conflictos
+          let horaCompleta = session.metadata.horaCompleta; // Variable separada para poder modificarla
           
           let today = new Date();
           let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
@@ -675,75 +639,6 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
 
           try {
             let hora = horaCompleta.split(':');
-
-            // Formatear la fecha primero
-            let fechaIdaFormateada = fechaIdaOriginal + ' ' + horaCompleta;
-
-            // Preparar los datos para el template de correo
-            const qrData = await generateQRCode(`${nombre_cliente}-${fechaIdaOriginal}-${horaCompleta}`);
-
-            // Crear la tabla de boletos
-            let tiposBoletos;
-            try {
-                tiposBoletos = JSON.parse(tipos_boletos);
-                if (!Array.isArray(tiposBoletos)) {
-                    console.error('tipos_boletos no es un array:', tiposBoletos);
-                    tiposBoletos = [{ nombre: "General", precio: total, cantidad: no_boletos }];
-                }
-            } catch (error) {
-                console.error('Error parseando tipos_boletos:', error);
-                tiposBoletos = [{ nombre: "General", precio: total, cantidad: no_boletos }];
-            }
-
-            let tablaBoletos = `
-              <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
-                <tr style="background-color:#f5f5f5">
-                  <th style="text-align:left">Tipo de boleto</th>
-                  <th style="text-align:right">Precio</th>
-                  <th style="text-align:center">Cantidad</th>
-                  <th style="text-align:right">Subtotal</th>
-                </tr>
-            `;
-            
-            tiposBoletos.forEach(tipo => {
-              tablaBoletos += `
-                <tr>
-                  <td style="text-align:left">${tipo.nombre}</td>
-                  <td style="text-align:right">$${tipo.precio.toFixed(2)}</td>
-                  <td style="text-align:center">${tipo.cantidad}</td>
-                  <td style="text-align:right">$${(tipo.precio * tipo.cantidad).toFixed(2)}</td>
-                </tr>
-              `;
-            });
-            
-            tablaBoletos += `
-              <tr>
-                <td colspan="2"></td>
-                <td style="text-align:center; font-weight:bold">Total</td>
-                <td style="text-align:right; font-weight:bold">$${total}</td>
-              </tr>
-            </table>`;
-
-            // Datos para el template
-            const emailData = {
-              nombre: nombre_cliente,
-              fecha: fecha_ida_original,
-              horario: horaCompleta,
-              boletos: no_boletos,
-              tablaBoletos: tablaBoletos,
-              total: total,
-              qr: qrData,
-              ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
-            };
-
-            // Enviar el correo
-            const emailHtml = emailTemplate(emailData);
-            await transporter.sendMail({
-              from: process.env.MAIL,
-              to: correo,
-              subject: "¡Confirmación de compra - Museo Casa Kahlo!",
-              html: emailHtml
-            });
 
             query = `SELECT 
                     * 
@@ -861,7 +756,7 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
 
           <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
           <br>
-          <p style="display: inline-flex">Fecha: ${fechaIdaFormateada}</p>
+          <p style="display: inline-flex">Fecha: \$\{fecha_ida_formateada\}</p>
           <br>
           <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
           <br>
@@ -899,15 +794,11 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
           
         } catch (error) {
           console.error('Error procesando pago en webhook:', error);
-          // No enviar respuesta de error al webhook de Stripe, solo loggear el error
-          // Stripe volverá a intentar el webhook si no recibe un 200
         }
       } else {
         console.log('❌ No hay metadata en checkout.session.completed');
         console.log('📊 Session sin metadata:', JSON.stringify(session, null, 2));
       }
-      // Siempre devolver 200 para que Stripe no reintente
-      return res.status(200).json({ received: true });
       break;
     
     // case 'charge.succeeded':
@@ -927,16 +818,12 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
       console.log('❌ Payment failed:', paymentIntent.id);
       break;
     
-    case 'charge.updated':
-      const charge = event.data.object;
-      console.log('💳 Charge updated:', charge.id);
-      // No necesitamos hacer nada específico con este evento, solo loggearlo
-      return res.json({received: true});
-      
     default:
       console.log(`🤷‍♀️ Unhandled event type ${event.type}`);
-      return res.json({received: true});
-  };
+  }
+
+  // Return a 200 response to acknowledge receipt of the event
+  res.json({received: true});
 });
 
 // Endpoint de prueba simple para verificar conectividad

@@ -9,6 +9,7 @@ const mailer = require('../controller/mailController')
 const helperName = require('../helpers/name')
 const QRCode = require('qrcode')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const emailTemplate = require('../templates/emailTemplate-correo_confirmacion_compra');
 
 function addMinutesToDate(objDate, intMinutes) {
     var numberOfMlSeconds = objDate.getTime();
@@ -483,25 +484,62 @@ app.post('/crear', async (req, res) => {
 
         await db.pool.query(query);
 
-        let html = `<div style="background-color: #eeeeee;padding: 20px; width: 400px;">
-        <div align="center" style="padding-top:20px;padding-bottom:40px"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/logodos.png" style="height:100px"/></div>
-        <p>Su compra ha sido exitosa.</p>
+          // Crear la tabla de boletos para el nuevo template
+          let tablaBoletos = `
+            <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
+              <tr style="background-color:#f5f5f5">
+                <th style="text-align:left">Tipo de boleto</th>
+                <th style="text-align:right">Precio</th>
+                <th style="text-align:center">Cantidad</th>
+                <th style="text-align:right">Subtotal</th>
+              </tr>
+          `;
+          
+          let tiposBoletos;
+          try {
+              tiposBoletos = JSON.parse(tipos_boletos);
+              if (!Array.isArray(tiposBoletos)) {
+                  console.error('tipos_boletos no es un array:', tiposBoletos);
+                  tiposBoletos = [{ nombre: "General", precio: total, cantidad: no_boletos }];
+              }
+          } catch (error) {
+              console.error('Error parseando tipos_boletos:', error);
+              tiposBoletos = [{ nombre: "General", precio: total, cantidad: no_boletos }];
+          }
+          
+          tiposBoletos.forEach(tipo => {
+            tablaBoletos += `
+              <tr>
+                <td style="text-align:left">${tipo.nombre}</td>
+                <td style="text-align:right">$${tipo.precio.toFixed(2)}</td>
+                <td style="text-align:center">${tipo.cantidad}</td>
+                <td style="text-align:right">$${(tipo.precio * tipo.cantidad).toFixed(2)}</td>
+              </tr>
+            `;
+          });
+          
+          tablaBoletos += `
+            <tr>
+              <td colspan="2"></td>
+              <td style="text-align:center; font-weight:bold">Total</td>
+              <td style="text-align:right; font-weight:bold">$${total}</td>
+            </tr>
+          </table>`;
 
-        <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
-        <br>
-        <p style="display: inline-flex">Fecha: \$\{fecha_ida_formateada\}</p>
-        <br>
-        <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
-        <br>
-        <img src="${qrCodeImg}" alt="Código QR"/>
-        
-        <div style="padding-top:20px;padding-bottom:20px"><hr></div>
-        <p style="font-size:10px">Recibiste éste correo porque las preferencias de correo electrónico se configuraron para recibir notificaciones del Museo Casa Kahlo.</p>
-        <p style="font-size:10px">Te pedimos que no respondas a este correo electrónico. Si tienes alguna pregunta sobre tu cuenta, contáctanos a través de la aplicación.</p>
-        
-        <p style="font-size:10px;padding-top:20px">Copyright©2025 Museo Casa Kahlo.Todos los derechos reservados.</p></div>`;
+          // Datos para el nuevo template
+          const emailData = {
+            nombre: nombre_cliente,
+            fecha: fecha_ida_formateada,
+            horario: horaCompleta,
+            boletos: no_boletos,
+            tablaBoletos: tablaBoletos,
+            total: total,
+            qr: qrCodeImg,
+            ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+          };
 
-        let message = {
+          // Generar el HTML usando el nuevo template
+          const html = emailTemplate(emailData);        let message = {
             from: process.env.MAIL, // sender address
             to: process.env.MAIL, // list of receivers
             subject: "Compra exitosa", // Subject line
@@ -617,9 +655,44 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
       if (session.metadata) {
         console.log('✅ Metadata encontrada, procesando...');
         try {
-          const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = session.metadata;
-          let fecha_ida_original = session.metadata.fecha_ida; // Variable separada para evitar conflictos
-          let horaCompleta = session.metadata.horaCompleta; // Variable separada para poder modificarla
+          // Validar que todos los campos necesarios estén presentes
+          const requiredFields = ['no_boletos', 'tipos_boletos', 'nombre_cliente', 'cliente_id', 'correo', 'tourId', 'total', 'fecha_ida', 'horaCompleta'];
+          const missingFields = requiredFields.filter(field => !session.metadata[field]);
+          
+          if (missingFields.length > 0) {
+            console.error('❌ Faltan campos requeridos:', missingFields);
+            throw new Error(`Campos requeridos faltantes: ${missingFields.join(', ')}`);
+          }
+
+          // Extraer todos los datos necesarios de una vez
+          const { 
+            no_boletos, 
+            tipos_boletos, 
+            nombre_cliente, 
+            cliente_id, 
+            correo, 
+            tourId, 
+            total, 
+            fecha_ida: fechaIdaOriginal, // Renombrar directamente en la desestructuración
+            horaCompleta 
+          } = session.metadata;
+
+          // Validación adicional para la fecha
+          if (!fechaIdaOriginal) {
+            throw new Error('La fecha es requerida y no está presente');
+          }
+
+          console.log('📊 Datos extraídos de metadata:', {
+            no_boletos,
+            tipos_boletos: tipos_boletos ? tipos_boletos.substring(0, 100) + '...' : 'undefined',
+            nombre_cliente,
+            cliente_id,
+            correo,
+            tourId,
+            fecha_ida_original,
+            horaCompleta,
+            total
+          });
           
           let today = new Date();
           let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
@@ -639,6 +712,136 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
 
           try {
             let hora = horaCompleta.split(':');
+
+            // Formatear la fecha primero
+            let fechaIdaFormateada = new Date(fechaIdaOriginal + ' ' + horaCompleta);
+
+            // Procesar el pago y crear registros primero
+            let lugares_disp = 0;
+
+            if (seCreoRegistro) {
+                lugares_disp = max_pasajeros - parseInt(no_boletos);
+            } else {
+                lugares_disp = viajeTour.lugares_disp - parseInt(no_boletos);
+            }
+
+            query = `INSERT INTO venta 
+                        (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, session_id) 
+                        VALUES 
+                        ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '1', '${fecha}', '0.0', '0', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}', '${session.id}')`;
+
+            let result = await db.pool.query(query);
+            result = result[0];
+
+            query = `SELECT 
+                        * 
+                        FROM usuario
+                        WHERE id = ${cliente_id}`;
+            let client = await db.pool.query(query);
+
+            client = client[0];
+
+            if (client.length == 0) {
+                console.error("Error en la busqueda de los datos del cliente");
+                return;
+            }
+            client = client[0];
+
+            let id_reservacion = result.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
+
+            //creamos el QR con el ID de reservación real
+            const qrData = await generateQRCode(id_reservacion);
+
+            query = `UPDATE viajeTour SET
+                        lugares_disp = '${lugares_disp}'
+                        WHERE id     = ${viajeTourId}`;
+
+            await db.pool.query(query);
+
+            query = `UPDATE venta SET
+                        id_reservacion = '${id_reservacion}'
+                        WHERE id       = ${result.insertId}`;
+
+            await db.pool.query(query);
+
+            // Crear la tabla de boletos
+            let tiposBoletos;
+            try {
+                tiposBoletos = JSON.parse(tipos_boletos);
+                if (!Array.isArray(tiposBoletos)) {
+                    console.error('tipos_boletos no es un array:', tiposBoletos);
+                    tiposBoletos = [{ nombre: "General", precio: total, cantidad: no_boletos }];
+                }
+            } catch (error) {
+                console.error('Error parseando tipos_boletos:', error);
+                tiposBoletos = [{ nombre: "General", precio: total, cantidad: no_boletos }];
+            }
+
+            let tablaBoletos = `
+              <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
+                <tr style="background-color:#f5f5f5">
+                  <th style="text-align:left">Tipo de boleto</th>
+                  <th style="text-align:right">Precio</th>
+                  <th style="text-align:center">Cantidad</th>
+                  <th style="text-align:right">Subtotal</th>
+                </tr>
+            `;
+            
+            tiposBoletos.forEach(tipo => {
+              tablaBoletos += `
+                <tr>
+                  <td style="text-align:left">${tipo.nombre}</td>
+                  <td style="text-align:right">$${tipo.precio.toFixed(2)}</td>
+                  <td style="text-align:center">${tipo.cantidad}</td>
+                  <td style="text-align:right">$${(tipo.precio * tipo.cantidad).toFixed(2)}</td>
+                </tr>
+              `;
+            });
+            
+            tablaBoletos += `
+              <tr>
+                <td colspan="2"></td>
+                <td style="text-align:center; font-weight:bold">Total</td>
+                <td style="text-align:right; font-weight:bold">$${total}</td>
+              </tr>
+            </table>`;
+
+            // Datos para el template
+            const emailData = {
+              nombre: nombre_cliente,
+              fecha: fechaIdaOriginal,
+              horario: horaCompleta,
+              boletos: no_boletos,
+              tablaBoletos: tablaBoletos,
+              total: total,
+              qr: qrData,
+              ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+            };
+
+            // Enviar el correo al admin y al cliente
+            const emailHtml = emailTemplate(emailData);
+            
+            let message = {
+                from: process.env.MAIL,
+                to: process.env.MAIL,
+                subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+                text: "",
+                html: emailHtml,
+            }
+
+            const info = await mailer.sendMail(message);
+            console.log('Email enviado al admin:', info);
+
+            message = {
+                from: process.env.MAIL,
+                to: correo,
+                subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+                text: "",
+                html: emailHtml,
+            }
+
+            const info2 = await mailer.sendMail(message);
+            console.log('Email enviado al cliente:', info2);
 
             query = `SELECT 
                     * 
@@ -756,7 +959,7 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
 
           <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
           <br>
-          <p style="display: inline-flex">Fecha: \$\{fecha_ida_formateada\}</p>
+          <p style="display: inline-flex">Fecha: ${fechaIdaFormateada}</p>
           <br>
           <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
           <br>
@@ -794,11 +997,15 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
           
         } catch (error) {
           console.error('Error procesando pago en webhook:', error);
+          // No enviar respuesta de error al webhook de Stripe, solo loggear el error
+          // Stripe volverá a intentar el webhook si no recibe un 200
         }
       } else {
         console.log('❌ No hay metadata en checkout.session.completed');
         console.log('📊 Session sin metadata:', JSON.stringify(session, null, 2));
       }
+      // Siempre devolver 200 para que Stripe no reintente
+      return res.status(200).json({ received: true });
       break;
     
     // case 'charge.succeeded':
@@ -818,12 +1025,16 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
       console.log('❌ Payment failed:', paymentIntent.id);
       break;
     
+    case 'charge.updated':
+      const charge = event.data.object;
+      console.log('💳 Charge updated:', charge.id);
+      // No necesitamos hacer nada específico con este evento, solo loggearlo
+      return res.json({received: true});
+      
     default:
       console.log(`🤷‍♀️ Unhandled event type ${event.type}`);
-  }
-
-  // Return a 200 response to acknowledge receipt of the event
-  res.json({received: true});
+      return res.json({received: true});
+  };
 });
 
 // Endpoint de prueba simple para verificar conectividad
