@@ -618,9 +618,30 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
       if (session.metadata) {
         console.log('✅ Metadata encontrada, procesando...');
         try {
+          // Validar que todos los campos necesarios estén presentes
+          const requiredFields = ['no_boletos', 'tipos_boletos', 'nombre_cliente', 'cliente_id', 'correo', 'tourId', 'total', 'fecha_ida', 'horaCompleta'];
+          const missingFields = requiredFields.filter(field => !session.metadata[field]);
+          
+          if (missingFields.length > 0) {
+            console.error('❌ Faltan campos requeridos:', missingFields);
+            throw new Error(`Campos requeridos faltantes: ${missingFields.join(', ')}`);
+          }
+
           const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = session.metadata;
-          let fecha_ida_original = session.metadata.fecha_ida; // Variable separada para evitar conflictos
-          let horaCompleta = session.metadata.horaCompleta; // Variable separada para poder modificarla
+          let fecha_ida_original = session.metadata.fecha_ida;
+          let horaCompleta = session.metadata.horaCompleta;
+
+          console.log('📊 Datos extraídos de metadata:', {
+            no_boletos,
+            tipos_boletos: tipos_boletos ? tipos_boletos.substring(0, 100) + '...' : 'undefined',
+            nombre_cliente,
+            cliente_id,
+            correo,
+            tourId,
+            fecha_ida_original,
+            horaCompleta,
+            total
+          });
           
           let today = new Date();
           let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
@@ -641,11 +662,25 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
           try {
             let hora = horaCompleta.split(':');
 
+            // Formatear la fecha primero
+            let fechaIdaFormateada = fechaIdaOriginal + ' ' + horaCompleta;
+
             // Preparar los datos para el template de correo
-            const qrData = await generateQRCode(`${nombre_cliente}-${fecha_ida_original}-${horaCompleta}`);
+            const qrData = await generateQRCode(`${nombre_cliente}-${fechaIdaOriginal}-${horaCompleta}`);
 
             // Crear la tabla de boletos
-            const tiposBoletos = JSON.parse(tipos_boletos);
+            let tiposBoletos;
+            try {
+                tiposBoletos = JSON.parse(tipos_boletos);
+                if (!Array.isArray(tiposBoletos)) {
+                    console.error('tipos_boletos no es un array:', tiposBoletos);
+                    tiposBoletos = [{ nombre: "General", precio: total, cantidad: no_boletos }];
+                }
+            } catch (error) {
+                console.error('Error parseando tipos_boletos:', error);
+                tiposBoletos = [{ nombre: "General", precio: total, cantidad: no_boletos }];
+            }
+
             let tablaBoletos = `
               <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
                 <tr style="background-color:#f5f5f5">
@@ -850,11 +885,15 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
           
         } catch (error) {
           console.error('Error procesando pago en webhook:', error);
+          // No enviar respuesta de error al webhook de Stripe, solo loggear el error
+          // Stripe volverá a intentar el webhook si no recibe un 200
         }
       } else {
         console.log('❌ No hay metadata en checkout.session.completed');
         console.log('📊 Session sin metadata:', JSON.stringify(session, null, 2));
       }
+      // Siempre devolver 200 para que Stripe no reintente
+      return res.status(200).json({ received: true });
       break;
     
     // case 'charge.succeeded':
