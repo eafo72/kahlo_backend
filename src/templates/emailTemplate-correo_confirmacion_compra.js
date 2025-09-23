@@ -14,11 +14,6 @@ module.exports = function generarEmail(data) {
             <td align="center">
               <table width="600" cellpadding="20" cellspacing="0" border="0" style="background-color: #ffffff; border-radius:8px;">
                 <tr>
-                  <td align="center" style="padding-bottom:0;">
-                    <img src="https://max-tickets.s3.us-east-2.amazonaws.com/imagenes_correos/mail_header.png" alt="Museo Casa Kahlo" width="100%" style="max-width:600px; border-radius:8px 8px 0 0;" />
-                  </td>
-                </tr>
-                <tr>
                   <td style="padding-left: 40px;padding-right: 40px;">
                     <h2 style="color:#00695c; font-weight: bolder; font-family:Arial, sans-serif; text-align:center;">¡Ya tienes tus boletos para Museo Casa Kahlo!</h2>
                     <p style="font-size:16px; color:#004d40; text-align:center;">Resumen de tu compra:</p>
@@ -56,11 +51,7 @@ module.exports = function generarEmail(data) {
                     <p style="font-size:12px; color:#999; text-align:center;">©Copyright 2025 Museo Casa Kahlo</p>
                   </td>
                 </tr>
-                <tr>
-                  <td align="center" style="padding-top:0;">
-                    <img src="https://max-tickets.s3.us-east-2.amazonaws.com/imagenes_correos/mail_footer.png" alt="footer" width="100%" style="max-width:600px; border-radius:0 0 8px 8px;" />
-                  </td>
-                </tr>
+                
               </table>
             </td>
           </tr>
