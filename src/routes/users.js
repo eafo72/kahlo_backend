@@ -590,37 +590,101 @@ app.post('/contacto', async (req, res) => {
 //login con google
 app.post('/google-login', async (req, res) => {
 	const { id_token } = req.body;
+	let payload;
   
 	if (!id_token) {
 	  return res.status(400).json({ msg: 'ID Token de Google no proporcionado', error: true });
 	}
   
 	try {
-	  // Verifica el token de Google
+	  // 1. Verifica el token de Google
 	  const client = new OAuth2Client('418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com');
 	  const ticket = await client.verifyIdToken({
 		idToken: id_token,
 		audience: '418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com',
 	  });
+	  payload = ticket.getPayload();
 	  
-	  // Si la verificación es exitosa, el código continúa
-	  const payload = ticket.getPayload();
-	  console.log("✅ Token de Google verificado exitosamente. El usuario es:", payload.email);
-  
-	  // Devuelve una respuesta de éxito con un token simulado
-	  res.status(200).json({ 
-		error: false, 
-		msg: "Autenticación de Google exitosa.",
-		token: "TOKEN_DE_PRUEBA_EXITOSO", // Usamos un token de prueba
+	  console.log("Datos del token de Google:", {
+		email: payload.email,
 		nombres: payload.given_name,
-		apellidos: payload.family_name,
-		correo: payload.email
+		apellidos: payload.family_name
 	  });
   
 	} catch (error) {
-	  // Si la verificación falla, se ejecuta este bloque
-	  console.error("❌ Error verificando token de Google:", error);
+	  console.error("Error verificando token de Google:", error);
 	  return res.status(401).json({ msg: 'Token de Google no válido', error: true });
+	}
+  
+	const { email, given_name, family_name } = payload;
+	let user;
+  
+	try {
+	  // 2. Busca si el usuario ya existe por su correo
+	  let query = `SELECT * FROM usuario WHERE correo = ?`;
+	  let [rows] = await db.pool.query(query, [email]);
+  
+	  if (rows.length > 0) {
+		// Si el usuario existe, usa su registro
+		user = rows[0];
+		console.log("Usuario encontrado en BD:", user.nombres);
+	  } else {
+		// 3. Si es un usuario nuevo, crea un nuevo registro sin contraseña, usando la estructura completa de tu API de registro.
+		console.log("Usuario no encontrado. Creando nuevo registro...");
+		
+		const nombres = given_name || '';
+		const apellidos = family_name || '';
+		const telefono = null;
+		const telefono_emergencia = null;
+		
+		// Obtiene la fecha y hora actuales
+		let today = new Date();
+		let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
+		let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
+		let fecha = date + ' ' + time;
+  
+		const createUserQuery = `
+		  INSERT INTO usuario 
+			(nombres, apellidos, telefono, telefono_emergencia, correo, password, isClient, created_at, updated_at) 
+		  VALUES 
+			(?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`;
+  
+		const [insertResult] = await db.pool.query(
+		  createUserQuery, 
+		  [nombres, apellidos, telefono, telefono_emergencia, email, null, 1, fecha, fecha]
+		);
+		
+		const newUserId = insertResult.insertId;
+  
+		// Vuelve a buscar el usuario recién creado para obtener todos sus datos
+		let [newRows] = await db.pool.query(`SELECT * FROM usuario WHERE correo = ?`, [email]);
+		user = newRows[0];
+		console.log("Nuevo usuario creado con ID:", newUserId);
+	  }
+  
+	  // 4. Genera y devuelve un token de sesión (JWT) para tu aplicación
+	  const sessionPayload = { user: { id: user.id } };
+	  jwt.sign(sessionPayload, process.env.SECRET, { expiresIn: '1h' }, (error, token) => {
+		if (error) {
+		  console.error("Error al generar JWT:", error);
+		  return res.status(500).json({ msg: 'Error al generar el token de sesión', error: true });
+		}
+  
+		// 5. Devuelve el token Y los datos del usuario para el frontend
+		res.status(200).json({ 
+		  error: false, 
+		  token: token,
+		  nombres: user.nombres,
+		  apellidos: user.apellidos,
+		  correo: user.correo,
+		  telefono: user.telefono || ''
+		});
+	  });
+  
+	} catch (error) {
+	  console.error("Error en el flujo de Google Login:", error);
+	  res.status(500).json({ msg: 'Hubo un error en el servidor', error: true, details: error.message });
 	}
   });
 
