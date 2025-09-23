@@ -9,6 +9,7 @@ const mailer = require('../controller/mailController')
 const helperName = require('../helpers/name')
 const QRCode = require('qrcode')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const emailTemplate = require('../templates/emailTemplate-correo_confirmacion_compra');
 
 function addMinutesToDate(objDate, intMinutes) {
     var numberOfMlSeconds = objDate.getTime();
@@ -640,6 +641,61 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
           try {
             let hora = horaCompleta.split(':');
 
+            // Preparar los datos para el template de correo
+            const qrData = await generateQRCode(`${nombre_cliente}-${fecha_ida_original}-${horaCompleta}`);
+
+            // Crear la tabla de boletos
+            const tiposBoletos = JSON.parse(tipos_boletos);
+            let tablaBoletos = `
+              <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
+                <tr style="background-color:#f5f5f5">
+                  <th style="text-align:left">Tipo de boleto</th>
+                  <th style="text-align:right">Precio</th>
+                  <th style="text-align:center">Cantidad</th>
+                  <th style="text-align:right">Subtotal</th>
+                </tr>
+            `;
+            
+            tiposBoletos.forEach(tipo => {
+              tablaBoletos += `
+                <tr>
+                  <td style="text-align:left">${tipo.nombre}</td>
+                  <td style="text-align:right">$${tipo.precio.toFixed(2)}</td>
+                  <td style="text-align:center">${tipo.cantidad}</td>
+                  <td style="text-align:right">$${(tipo.precio * tipo.cantidad).toFixed(2)}</td>
+                </tr>
+              `;
+            });
+            
+            tablaBoletos += `
+              <tr>
+                <td colspan="2"></td>
+                <td style="text-align:center; font-weight:bold">Total</td>
+                <td style="text-align:right; font-weight:bold">$${total}</td>
+              </tr>
+            </table>`;
+
+            // Datos para el template
+            const emailData = {
+              nombre: nombre_cliente,
+              fecha: fecha_ida_original,
+              horario: horaCompleta,
+              boletos: no_boletos,
+              tablaBoletos: tablaBoletos,
+              total: total,
+              qr: qrData,
+              ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+            };
+
+            // Enviar el correo
+            const emailHtml = emailTemplate(emailData);
+            await transporter.sendMail({
+              from: process.env.MAIL,
+              to: correo,
+              subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+              html: emailHtml
+            });
+
             query = `SELECT 
                     * 
                     FROM viajeTour 
@@ -750,60 +806,45 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
 
           await db.pool.query(query);
 
+          let html = `<div style="background-color: #eeeeee;padding: 20px; width: 400px;">
+          <div align="center" style="padding-top:20px;padding-bottom:40px"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/logodos.png" style="height:100px"/></div>
+          <p>Su compra ha sido exitosa.</p>
 
-                    // Generar tabla de boletos (puedes personalizar según tipos_boletos)
-                    let tablaBoletos = `<table width="100%" cellpadding="6" cellspacing="0" border="0" style="background:#e0f7fa; border-radius:6px; font-size:15px; margin-bottom:20px;">
-                        <tr style="background:#00695c; color:#fff;">
-                            <th>Tipo de boleto</th>
-                            <th>Precio</th>
-                            <th>Cantidad</th>
-                            <th>Subtotal</th>
-                        </tr>
-                        <!-- Aquí puedes iterar tipos_boletos si es array -->
-                        <tr>
-                            <td>General</td>
-                            <td>$${total / no_boletos}</td>
-                            <td>${no_boletos}</td>
-                            <td>$${total}</td>
-                        </tr>
-                    </table>`;
+          <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
+          <br>
+          <p style="display: inline-flex">Fecha: \$\{fecha_ida_formateada\}</p>
+          <br>
+          <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
+          <br>
+          <img src="${qrCodeImg}" alt="Código QR"/>
+          
+          <div style="padding-top:20px;padding-bottom:20px"><hr></div>
+          <p style="font-size:10px">Recibiste éste correo porque las preferencias de correo electrónico se configuraron para recibir notificaciones del Museo Casa Kahlo.</p>
+          <p style="font-size:10px">Te pedimos que no respondas a este correo electrónico. Si tienes alguna pregunta sobre tu cuenta, contáctanos a través de la aplicación.</p>
+          
+          <p style="font-size:10px;padding-top:20px">Copyright©2025 Museo Casa Kahlo.Todos los derechos reservados.</p></div>`;
 
-                    // Preparar datos para el template
-                    const generarEmail = require('../templates/emailTemplate-correo_confirmacion_compra.js');
-                    let data = {
-                        nombre: nombre_cliente,
-                        fecha: fecha_ida_formateada.split(' ')[0],
-                        horario: horaCompleta,
-                        boletos: no_boletos,
-                        tablaBoletos,
-                        total,
-                        qr: qrCodeImg,
-                        ubicacionUrl: 'https://goo.gl/maps/2QwQwQwQwQwQwQwQw', // URL real de Google Maps
-                    };
+          let message = {
+              from: process.env.MAIL,
+              to: process.env.MAIL,
+              subject: "Compra exitosa",
+              text: "",
+              html: `${html}`,
+          }
 
-                    let html = generarEmail(data);
+          const info = await mailer.sendMail(message);
+          console.log('Email enviado al admin:', info);
 
-                    let message = {
-                            from: process.env.MAIL,
-                            to: process.env.MAIL,
-                            subject: "Compra exitosa",
-                            text: "",
-                            html: html,
-                    }
+          message = {
+              from: process.env.MAIL,
+              to: correo,
+              subject: "Compra exitosa",
+              text: "",
+              html: `${html}`,
+          }
 
-                    const info = await mailer.sendMail(message);
-                    console.log('Email enviado al admin:', info);
-
-                    message = {
-                            from: process.env.MAIL,
-                            to: correo,
-                            subject: "Compra exitosa",
-                            text: "",
-                            html: html,
-                    }
-
-                    const info2 = await mailer.sendMail(message);
-                    console.log('Email enviado al cliente:', info2);
+          const info2 = await mailer.sendMail(message);
+          console.log('Email enviado al cliente:', info2);
 
           console.log(`✅ Venta creada exitosamente: ${id_reservacion}, viajeTourId: ${viajeTourId}`);
           
