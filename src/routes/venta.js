@@ -627,9 +627,8 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
             throw new Error(`Campos requeridos faltantes: ${missingFields.join(', ')}`);
           }
 
-          const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = session.metadata;
-          let fecha_ida_original = session.metadata.fecha_ida;
-          let horaCompleta = session.metadata.horaCompleta;
+          const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total, fecha_ida, horaCompleta } = session.metadata;
+          const fechaIdaOriginal = fecha_ida; // Asignamos el valor a la variable que usamos en el código
 
           console.log('📊 Datos extraídos de metadata:', {
             no_boletos,
@@ -913,12 +912,16 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
       console.log('❌ Payment failed:', paymentIntent.id);
       break;
     
+    case 'charge.updated':
+      const charge = event.data.object;
+      console.log('💳 Charge updated:', charge.id);
+      // No necesitamos hacer nada específico con este evento, solo loggearlo
+      return res.json({received: true});
+      
     default:
       console.log(`🤷‍♀️ Unhandled event type ${event.type}`);
-  }
-
-  // Return a 200 response to acknowledge receipt of the event
-  res.json({received: true});
+      return res.json({received: true});
+  };
 });
 
 // Endpoint de prueba simple para verificar conectividad
