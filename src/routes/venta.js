@@ -732,7 +732,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
 
                     tiposBoletosArray.forEach(tipo => {
-                        let subtotal = Number(tipo.precio) * Number(tipo.cantidad); 
+                        let subtotal = Number(tipo.precio) * Number(tipo.cantidad);
 
 
                         tablaBoletos += `
@@ -1284,19 +1284,64 @@ app.post('/verificarQr', async (req, res) => {
         // Revisa si existe el número de reservación
         let query = `SELECT id_reservacion FROM venta WHERE id_reservacion = '${idReservacion}'`;
         let existReservacion = await db.pool.query(query);
-        
+
         if (existReservacion[0].length < 1) {
             return res.status(200).json({ error: true, msg: "El QR de reservación no existe." });
         }
         // Si existe, devuelve un mensaje de éxito
-        res.status(200).json({ 
-            error: false, 
-            msg: "El QR de reservación es válido." 
+        res.status(200).json({
+            error: false,
+            msg: "El QR de reservación es válido."
         });
     } catch (error) {
         console.log(error);
         res.status(400).json({ error: true, details: error })
     }
 });
+
+// Paso 1: crear la cuenta Standard del museo
+app.post('/create-connected-account', async (req, res) => {
+    try {
+        const account = await stripe.accounts.create({
+            type: 'standard', // cuenta propia del museo
+            country: 'MX',    // cambia según el país del museo
+            email: req.body.email,
+        });
+
+        res.json({ accountId: account.id }); // devuelves el acct_xxx
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// Paso 2: crear el accountLink para que el museo complete el onboarding
+app.post('/create-account-link', async (req, res) => {
+    try {
+        const accountLink = await stripe.accountLinks.create({
+            account: req.body.accountId, // el acct_xxx que guardaste
+            refresh_url: 'https://api.museodesarrollo.info/venta/reauth', // si el museo cancela
+            return_url: 'https://api.museodesarrollo.info/venta/success', // si el museo termina
+            type: 'account_onboarding',
+        });
+
+        res.json({ url: accountLink.url });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+app.get('/reauth', (req, res) => {
+    res.send(`
+      <h2>Onboarding cancelado</h2>
+      <p>Puedes intentarlo de nuevo:</p>
+      <a href="/frontend/connect-museum.html">Volver a conectar la cuenta</a>
+    `);
+});
+
+app.get('/success', (req, res) => {
+    res.send('<h2>¡Cuenta conectada correctamente!</h2><p>Ahora puedes empezar a cobrar con Stripe Connect.</p>');
+});
+
+
 
 module.exports = app
