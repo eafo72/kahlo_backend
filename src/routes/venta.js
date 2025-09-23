@@ -18,15 +18,6 @@ function addMinutesToDate(objDate, intMinutes) {
     return newDateObj;
 }
 
-// Endpoint súper simple para probar que las rutas funcionan
-app.get('/test-simple', (req, res) => {
-    res.json({
-        success: true,
-        message: 'Endpoint simple funcionando',
-        timestamp: new Date().toISOString(),
-        path: req.originalUrl
-    });
-});
 
 function weekDay(fecha) {
     let dayselected;
@@ -279,63 +270,6 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
     }
 })
 
-///API DE PRUEBAS DE TULIO/////
-app.get('/horarios-disponibles/:tourId/:fecha_ida/:visitantes', async (req, res) => {
-    try {
-        const { tourId, fecha_ida, visitantes } = req.params;
-
-        // Info del tour
-        let query = `SELECT * FROM tour WHERE id = ${tourId}`;
-        let tour = await db.pool.query(query);
-        if (tour[0].length === 0) {
-            return res.status(404).json({ msg: "Tour no encontrado" });
-        }
-        tour = tour[0][0];
-        const max_pasajeros = tour.max_pasajeros;
-
-        // Horarios posibles desde la tabla fecha (catálogo de horarios del tour)
-        query = `SELECT * FROM fecha WHERE tour_id=${tourId}`;
-        let salidas = await db.pool.query(query);
-        salidas = salidas[0];
-
-        const disponibles = [];
-
-        for (let salida of salidas) {
-            const hora = salida.hora_salida;
-            const horaSplit = hora.split(':')[0]; // solo hora para el WHERE HOUR()
-
-            // Revisar si ya hay viajeTour en esa fecha + hora
-            query = `SELECT * FROM viajeTour 
-               WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
-               AND HOUR(CAST(fecha_ida AS TIME)) = '${horaSplit}'
-               AND tour_id = ${tourId}`;
-            let viaje = await db.pool.query(query);
-            viaje = viaje[0];
-
-            let lugares_disp = max_pasajeros;
-            if (viaje.length > 0) {
-                lugares_disp = viaje[0].lugares_disp;
-            }
-
-            if (lugares_disp >= visitantes) {
-                disponibles.push({
-                    hora: hora,
-                    lugares: lugares_disp
-                });
-            }
-        }
-
-        if (disponibles.length === 0) {
-            return res.status(200).json({ horarios: [], msg: "No hay horarios con disponibilidad suficiente" });
-        }
-
-        res.status(200).json({ horarios: disponibles });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: true, msg: "Error obteniendo horarios disponibles", details: error });
-    }
-});
 
 app.post('/crear', async (req, res) => {
     try {
@@ -546,50 +480,30 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
     try {
         const { lineItems, customerEmail, successUrl, cancelUrl, metadata } = req.body;
 
-        //payment_method_type overrides lo que seleccione en el dashboard de stripe
-        const session = await stripe.checkout.sessions.create({
-            payment_method_types: ['card'],
-            line_items: lineItems,
-            mode: 'payment',
-            success_url: successUrl,
-            cancel_url: cancelUrl,
-            customer_email: customerEmail,
-            metadata: metadata,
-            billing_address_collection: 'auto',
-        });
+        // Crea la sesión en la cuenta conectada
+        const session = await stripe.checkout.sessions.create(
+            {
+                payment_method_types: ['card'],
+                line_items: lineItems,
+                mode: 'payment',
+                success_url: successUrl,
+                cancel_url: cancelUrl,
+                customer_email: customerEmail,
+                metadata: metadata,
+                billing_address_collection: 'auto',
+            },
+            {
+                stripeAccount: 'acct_1S97Ur3LbOQcayrs', // 👈 clave: ID de la cuenta conectada osea la cuenta del museo
+            }
+        );
 
         res.json({ sessionId: session.id });
     } catch (error) {
+        console.error('Error creating checkout session:', error);
         res.status(400).json({ error: error.message });
     }
 });
 
-// Endpoint adicional para testing directo del webhook de Stripe
-app.post('/stripe/webhook-debug', express.raw({ type: 'application/json' }), async (req, res) => {
-    console.log(' WEBHOOK DEBUG ENDPOINT ALCANZADO');
-    console.log('Timestamp:', new Date().toISOString());
-    console.log('Method:', req.method);
-    console.log('URL:', req.originalUrl);
-    console.log('Headers:', JSON.stringify(req.headers, null, 2));
-    console.log('Body type:', typeof req.body);
-    console.log('Body length:', req.body ? req.body.length : 'No body');
-    console.log('Content-Type:', req.headers['content-type']);
-    console.log('Stripe-Signature:', req.headers['stripe-signature'] ? 'Presente' : 'Ausente');
-
-    // Intentar parsear como JSON para ver qué contiene
-    try {
-        const jsonBody = JSON.parse(req.body.toString());
-        console.log('Parsed JSON:', JSON.stringify(jsonBody, null, 2));
-    } catch (err) {
-        console.log('No se pudo parsear como JSON:', err.message);
-    }
-
-    res.status(200).json({
-        received: true,
-        timestamp: new Date().toISOString(),
-        message: 'Webhook debug recibido correctamente'
-    });
-});
 
 app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     console.log(' WEBHOOK ENDPOINT ALCANZADO - TIMESTAMP:', new Date().toISOString());
@@ -929,293 +843,6 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
     res.json({ received: true });
 });
 
-// Endpoint de prueba simple para verificar conectividad
-app.get('/stripe/webhook-test', (req, res) => {
-    console.log('');
-    res.json({
-        message: 'Webhook endpoint está funcionando',
-        timestamp: new Date().toISOString(),
-        secret_configured: !!process.env.STRIPE_WEBHOOK_SECRET
-    });
-});
-
-// Endpoint de test básico sin middleware de parsing
-app.post('/test/webhook-basic', (req, res) => {
-    console.log('');
-    console.log('');
-    console.log('Headers:', req.headers);
-    console.log('Raw body type:', typeof req.body);
-
-    res.json({
-        success: true,
-        message: 'Test básico completado',
-        timestamp: new Date().toISOString(),
-        contentType: req.headers['content-type']
-    });
-});
-
-// Endpoint de test separado para webhook con express.json()
-app.post('/test/webhook-simple', express.json(), (req, res) => {
-    console.log('');
-    console.log('');
-    console.log('Headers:', JSON.stringify(req.headers, null, 2));
-    console.log('Body:', JSON.stringify(req.body, null, 2));
-
-    res.json({
-        success: true,
-        message: 'Test simple completado',
-        received: req.body,
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Endpoint de test completo para simular toda la lógica del webhook
-app.post('/test/webhook-complete', express.json(), async (req, res) => {
-    console.log('');
-    console.log('');
-    console.log('Body recibido:', JSON.stringify(req.body, null, 2));
-
-    try {
-        // Simular la estructura de un evento de Stripe
-        const event = req.body;
-
-        console.log('');
-        console.log('Tipo de evento test:', event.type);
-
-        switch (event.type) {
-            case 'checkout.session.completed':
-                const session = event.data.object;
-                console.log('');
-                console.log('Payment succeeded (checkout.session.completed):', session.id);
-                console.log('');
-                console.log('Session metadata:', session.metadata);
-
-                if (session.metadata) {
-                    try {
-                        const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, horaCompleta, total } = session.metadata;
-                        let fechaIdaOriginal = session.metadata.fecha_ida; // Usar variable con nombre diferente
-
-                        console.log('');
-                        console.log('Datos extraídos:', {
-                            no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, fecha_ida: fechaIdaOriginal, horaCompleta, total
-                        });
-
-                        // Validar que tengamos los datos mínimos necesarios
-                        if (!no_boletos || !cliente_id || !tourId || !fechaIdaOriginal || !horaCompleta) {
-                            console.error('');
-                            console.error('Datos incompletos:', { no_boletos, cliente_id, tourId, fecha_ida: fechaIdaOriginal, horaCompleta });
-                            return res.status(400).json({
-                                error: 'Datos incompletos',
-                                required: ['no_boletos', 'cliente_id', 'tourId', 'fecha_ida', 'horaCompleta'],
-                                received: { no_boletos, cliente_id, tourId, fecha_ida: fechaIdaOriginal, horaCompleta }
-                            });
-                        }
-
-                        let today = new Date();
-                        let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
-                        let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
-                        let fecha = date + ' ' + time;
-                        let seCreoRegistro = false;
-                        let viajeTourObj = '';
-                        let query = ``;
-                        let viajeTourId = null;
-
-                        console.log('');
-                        console.log('Buscando tour con ID:', tourId);
-
-                        //info tour para calcular fecha de regreso
-                        query = `SELECT * FROM tour WHERE id = ${tourId} `;
-                        let tour = await db.pool.query(query);
-
-                        if (tour[0].length === 0) {
-                            console.error('');
-                            console.error('Tour no encontrado con ID:', tourId);
-                            return res.status(400).json({ error: 'Tour no encontrado', tourId });
-                        }
-
-                        tour = tour[0][0];
-                        let duracion = tour.duracion;
-                        let max_pasajeros = tour.max_pasajeros;
-
-                        console.log('');
-                        console.log('Tour encontrado:', { id: tour.id, nombre: tour.nombre, max_pasajeros, duracion });
-
-                        try {
-                            let hora = horaCompleta.split(':');
-
-                            query = `SELECT 
-                      * 
-                      FROM viajeTour 
-                      WHERE CAST(fecha_ida AS DATE) = '${fechaIdaOriginal}'
-                      AND HOUR(CAST(fecha_ida AS TIME)) = '${hora[0]}'
-                      AND tour_id = ${tourId};`;
-
-                            console.log('');
-                            console.log('Query viajeTour:', query);
-
-                            let disponibilidad = await db.pool.query(query);
-                            disponibilidad = disponibilidad[0];
-
-                            console.log('');
-                            console.log('Disponibilidad encontrada:', disponibilidad.length > 0 ? 'Sí' : 'No');
-
-                            if (hora.length < 3) {
-                                horaCompleta += ':00'
-                            }
-                            //formateo de fechaida
-                            let fechaIdaFormateada = fechaIdaOriginal + ' ' + horaCompleta;
-                            console.log('');
-                            console.log('Fecha ida formateada:', fechaIdaFormateada);
-
-                            //formateo de fecha regreso
-                            const newfecha = addMinutesToDate(new Date(fechaIdaFormateada), parseInt(duracion));
-                            const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
-                            console.log('');
-                            console.log('Fecha regreso calculada:', fecha_regreso);
-
-                            if (disponibilidad.length == 0) {
-                                console.log('');
-                                console.log('Creando nuevo viajeTour');
-
-                                query = `SELECT * FROM tour WHERE id = ${tourId}`;
-                                let result = await db.pool.query(query);
-                                result = result[0][0];
-
-                                let guia = result.guias;
-                                guia = JSON.parse(guia);
-                                console.log('');
-                                console.log('Guía asignado:', guia[0]);
-
-                                query = `INSERT INTO viajeTour 
-                      (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
-                      VALUES 
-                      ('${fechaIdaFormateada}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
-
-                                result = await db.pool.query(query);
-                                result = result[0];
-
-                                viajeTourId = result.insertId;
-                                seCreoRegistro = true;
-                                console.log('');
-                                console.log('Nuevo viajeTour creado con ID:', viajeTourId);
-
-                            } else {
-                                viajeTourObj = disponibilidad[0];
-                                viajeTourId = disponibilidad[0].id;
-                                console.log('');
-                                console.log('Usando viajeTour existente con ID:', viajeTourId);
-                            }
-
-                        } catch (error) {
-                            console.log('');
-                            console.log('Error en creacion viajeTour:', error);
-                            return res.status(500).json({ error: 'Error creando viajeTour', details: error.message });
-                        }
-
-                        let lugares_disp = 0;
-
-                        if (seCreoRegistro) {
-                            lugares_disp = max_pasajeros - parseInt(no_boletos);
-                        } else {
-                            lugares_disp = viajeTourObj.lugares_disp - parseInt(no_boletos);
-                        }
-
-                        console.log('');
-                        console.log('Lugares disponibles después de la compra:', lugares_disp);
-
-                        if (lugares_disp < 0) {
-                            console.error('');
-                            console.error('No hay suficientes lugares disponibles');
-                            return res.status(400).json({
-                                error: 'No hay suficientes lugares disponibles',
-                                disponibles: seCreoRegistro ? max_pasajeros : viajeTourObj.lugares_disp,
-                                solicitados: no_boletos
-                            });
-                        }
-
-                        console.log('');
-                        console.log('Insertando venta en la base de datos...');
-
-                        query = `INSERT INTO venta 
-                            (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id) 
-                            VALUES 
-                            ('V', '${no_boletos}', '${tipos_boletos || 'adulto'}', '${total}', '1', '${fecha}', '0.0', '0', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}')`;
-
-                        let result = await db.pool.query(query);
-                        result = result[0];
-
-                        console.log('');
-                        console.log('Venta insertada con ID:', result.insertId);
-
-                        query = `SELECT * FROM usuario WHERE id = ${cliente_id}`;
-                        let client = await db.pool.query(query);
-                        client = client[0];
-
-                        if (client.length == 0) {
-                            console.error('');
-                            console.error('Cliente no encontrado con ID:', cliente_id);
-                            return res.status(400).json({ error: 'Cliente no encontrado', cliente_id });
-                        }
-
-                        client = client[0];
-                        console.log('');
-                        console.log('Cliente encontrado:', client.nombres, client.apellidos);
-
-                        let id_reservacion = result.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
-                        console.log('');
-                        console.log('ID de reservación generado:', id_reservacion);
-
-                        //creamos el QR
-                        const qrCodeBuffer = await generateQRCode(id_reservacion);
-                        console.log('');
-                        console.log('QR Code generado');
-
-                        query = `UPDATE viajeTour SET lugares_disp = '${lugares_disp}' WHERE id = ${viajeTourId}`;
-                        await db.pool.query(query);
-                        console.log('');
-                        console.log('Lugares disponibles actualizados');
-
-                        query = `UPDATE venta SET id_reservacion = '${id_reservacion}' WHERE id = ${result.insertId}`;
-                        await db.pool.query(query);
-                        console.log('');
-                        console.log('ID de reservación actualizado en venta');
-
-                        console.log(` Venta creada exitosamente: ${id_reservacion}, viajeTourId: ${viajeTourId}`);
-
-                        return res.json({
-                            success: true,
-                            message: 'Webhook test completado exitosamente',
-                            data: {
-                                id_reservacion,
-                                viajeTourId,
-                                lugares_disp,
-                                venta_id: result.insertId
-                            }
-                        });
-
-                    } catch (error) {
-                        console.error('');
-                        console.error('Error procesando pago en webhook test:', error);
-                        return res.status(500).json({ error: 'Error procesando webhook', details: error.message });
-                    }
-                } else {
-                    console.log('');
-                    console.log(' No hay metadata en la session');
-                    return res.status(400).json({ error: 'No metadata found in session' });
-                }
-                break;
-
-            default:
-                console.log('');
-                console.log('Tipo de evento no manejado en test: ${event.type}');
-                return res.json({ message: 'Evento recibido pero no procesado', type: event.type });
-        }
-    } catch (error) {
-        console.error('');
-        console.error('Error en webhook test:', error);
-        return res.status(500).json({ error: 'Error en webhook test', details: error.message });
-    }
-});
 
 //la feha esta definida por AAAA-MM-DD y la hora desde 00 hasta 23
 app.get('/reservacion/:id', async (req, res) => {
@@ -1649,6 +1276,27 @@ app.put('/active', async (req, res) => {
     } catch (error) {
         res.status(400).json({ error: true, details: error })
     }
-})
+});
+
+app.post('/verificarQr', async (req, res) => {
+    try {
+        const { idReservacion } = req.body
+        // Revisa si existe el número de reservación
+        let query = `SELECT id_reservacion FROM venta WHERE id_reservacion = '${idReservacion}'`;
+        let existReservacion = await db.pool.query(query);
+        
+        if (existReservacion[0].length < 1) {
+            return res.status(200).json({ error: true, msg: "El QR de reservación no existe." });
+        }
+        // Si existe, devuelve un mensaje de éxito
+        res.status(200).json({ 
+            error: false, 
+            msg: "El QR de reservación es válido." 
+        });
+    } catch (error) {
+        console.log(error);
+        res.status(400).json({ error: true, details: error })
+    }
+});
 
 module.exports = app
