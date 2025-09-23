@@ -597,10 +597,11 @@ app.post('/google-login', async (req, res) => {
 	try {
 	// Para ver el contenido del token de Google
 	const decodedToken = jwt.decode(id_token);
-	console.log("Contenido del token decodificado:", decodedToken);
+	console.log("Aca ando Contenido del token decodificado:", decodedToken);
   } catch(err) {
-	console.error("No se pudo decodificar el token para depuración");
+	console.error("Aca ando No se pudo decodificar el token para depuración");
   }
+  
 	try {
 	  // 1. Verifica el token de Google
 	  const client = new OAuth2Client('418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com');
