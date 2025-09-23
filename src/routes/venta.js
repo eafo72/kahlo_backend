@@ -828,7 +828,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     // Datos para el template
                     const emailData = {
                         nombre: nombre_cliente,
-                        fecha: fechaIdaOriginal,
+                        fecha: fecha_ida_original,
                         horario: horaCompleta,
                         boletos: no_boletos,
                         tablaBoletos: tablaBoletos,
