@@ -833,7 +833,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                         boletos: no_boletos,
                         tablaBoletos: tablaBoletos,
                         total: total,
-                        qr: qrData,
+                        qr: qrCodeImg,
                         ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
                     };
 
