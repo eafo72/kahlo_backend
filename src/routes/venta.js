@@ -803,15 +803,15 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
 
                     tiposBoletosArray.forEach(tipo => {
-                        let subtotal = tipo.precio * tipo.cantidad;
+                        let subtotal = Number(tipo.precio) * Number(tipo.cantidad); 
 
 
                         tablaBoletos += `
     <tr>
       <td style="text-align:left">${tipo.nombre}</td>
-      <td style="text-align:right">$${tipo.precio.toFixed(2)}</td>
-      <td style="text-align:center">${tipo.cantidad}</td>
-      <td style="text-align:right">$${subtotal.toFixed(2)}</td>
+      <td style="text-align:right">$${Number(tipo.precio).toFixed(2)}</td>
+      <td style="text-align:center">${Number(tipo.cantidad)}</td>
+      <td style="text-align:right">$${Number(subtotal).toFixed(2)}</td>
     </tr>
   `;
                     });
@@ -820,7 +820,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
   <tr>
     <td colspan="2"></td>
     <td style="text-align:center; font-weight:bold">Total</td>
-    <td style="text-align:right; font-weight:bold">$${total.toFixed(2)}</td>
+    <td style="text-align:right; font-weight:bold">$${Number(total).toFixed(2)}</td>
   </tr>
 </table>`;
 
