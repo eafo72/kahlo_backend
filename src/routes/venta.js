@@ -698,7 +698,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     // 
                     const precios = {
                         tipoA: 270,
-                        tipoB: 165,
+                        tipoB: 130,
                         tipoC: 65
                     };
 
