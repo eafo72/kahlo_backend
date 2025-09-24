@@ -493,7 +493,7 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
                 billing_address_collection: 'auto',
             },
             {
-                stripeAccount: 'acct_1S97Ur3LbOQcayrs', // 👈 clave: ID de la cuenta conectada osea la cuenta del museo
+                stripeAccount: 'acct_1SAz5b3CVvaJXMYX', // 👈 clave: ID de la cuenta conectada osea la cuenta del museo
             }
         );
 
