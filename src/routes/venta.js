@@ -497,8 +497,8 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
             }
         );
 
-        //res.json({ sessionId: session.id, url: session.url });
-        res.redirect(303, session.url);
+        res.json({ sessionId: session.id, url: session.url });
+        
     } catch (error) {
         console.error('Error creating checkout session:', error);
         res.status(400).json({ error: error.message });
