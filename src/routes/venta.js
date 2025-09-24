@@ -1278,24 +1278,44 @@ app.put('/active', async (req, res) => {
     }
 });
 
+const dgram = require('dgram');
+const udpClient = dgram.createSocket('udp4');
+const UDP_IP = '192.168.100.222'; // destino
+const UDP_PORT = 2022;            // puerto destino
+
+
 app.post('/verificarQr', async (req, res) => {
     try {
-        const { idReservacion } = req.body
+        const { idReservacion } = req.body;
+
         // Revisa si existe el número de reservación
         let query = `SELECT id_reservacion FROM venta WHERE id_reservacion = '${idReservacion}'`;
         let existReservacion = await db.pool.query(query);
-
+        
         if (existReservacion[0].length < 1) {
             return res.status(200).json({ error: true, msg: "El QR de reservación no existe." });
         }
-        // Si existe, devuelve un mensaje de éxito
-        res.status(200).json({
-            error: false,
-            msg: "El QR de reservación es válido."
+
+        // Si existe, manda el id por UDP con #
+        const mensaje = Buffer.from(`#${idReservacion}`);
+        udpClient.send(mensaje, UDP_PORT, UDP_IP, (err) => {
+            if (err) {
+                console.error('Error enviando UDP:', err);
+                // No bloqueamos la respuesta al usuario por un fallo en UDP
+            } else {
+                console.log(`Boleto enviado por UDP: #${idReservacion}`);
+            }
         });
+
+        // Devuelve un mensaje de éxito
+        res.status(200).json({ 
+            error: false, 
+            msg: "El QR de reservación es válido y se envió por UDP." 
+        });
+
     } catch (error) {
         console.log(error);
-        res.status(400).json({ error: true, details: error })
+        res.status(400).json({ error: true, details: error });
     }
 });
 
