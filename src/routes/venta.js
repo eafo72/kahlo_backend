@@ -1363,6 +1363,35 @@ app.get('/success', (req, res) => {
     res.send('<h2>¡Cuenta conectada correctamente!</h2><p>Ahora puedes empezar a cobrar con Stripe Connect.</p>');
 });
 
+// Historial de compras por usuario (cliente_id)
+app.get('/compras/:clienteId', async (req, res) => {
+  try {
+    const clienteId = req.params.clienteId;
+    let query = `
+      SELECT 
+        v.id, 
+        v.id_reservacion, 
+        v.no_boletos, 
+        v.total, 
+        v.fecha_compra,
+        v.pagado,
+        t.nombre AS nombreTour, 
+        vt.fecha_ida, 
+        vt.fecha_regreso
+      FROM venta v
+      INNER JOIN viajeTour vt ON v.viajeTour_id = vt.id
+      INNER JOIN tour t ON vt.tour_id = t.id
+      WHERE v.cliente_id = ${clienteId}
+      ORDER BY v.fecha_compra DESC
+    `;
+    let compras = await db.pool.query(query);
+    res.status(200).json({ error: false, data: compras[0] });
+  } catch (error) {
+    console.error("Error en historial de compras:", error);
+    res.status(500).json({ error: true, msg: "Error obteniendo historial", details: error });
+  }
+});
+
 
 
 module.exports = app
