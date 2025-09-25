@@ -206,12 +206,33 @@ app.post('/resetpass', async (req, res) => {
 	try {
 		let correoClient = req.body.correo;
 
-		if (correoClient) {
-			return res.status(400)
-				.json({
-					msg: 'El id debe ser un numero entero',
-					error: true
-				});
+		// 1. Validar que el correo se haya enviado
+		if (!correoClient) {
+			return res.status(400).json({
+				msg: 'El campo correo debe de contener un valor',
+				error: true
+			});
+		}
+
+		// 2. Buscar usuario, verificar estado activo y que tenga una contraseña
+		let query = `SELECT id, password FROM usuario WHERE correo='${correoClient}' AND status = 1`;
+		let client = await db.pool.query(query);
+
+		// 3. Verificar si el usuario existe y si tiene una contraseña (no es de Google)
+		if (client[0].length === 0) {
+			return res.status(404).json({
+				msg: "No se encontró el usuario o no está activo.",
+				error: true
+			});
+		}
+
+		const user = client[0][0];
+
+		if (user.password === null) {
+			return res.status(400).json({
+				msg: "Tu usuario se registró con Google y no puede generar una nueva contraseña directamente.",
+				error: true
+			});
 		}
 
 		let today = new Date();
@@ -219,49 +240,35 @@ app.post('/resetpass', async (req, res) => {
 		let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
 		let fecha = date + ' ' + time;
 
-		let query = `SELECT id, nombres, apellidos, telefono, correo, status, created_at 
-						FROM usuario 
-						WHERE correo='${correoClient}' 
-						AND status = 1`;
-
-		let client = await db.pool.query(query);
-
-		if (client[0].length != 0) {
-
-			const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-			let newpass = Math.random().toString(36).substring(0, 10);
-
-			let message = {
-				from: process.env.MAIL, // sender address
-				to: correoClient, // list of receivers
-				subject: "Cambio de Contraseña", // Subject line
-				text: "", // plain text body
-				html: `<p>Su nueva contraseña es: ${newpass}</p>`, // html body
-			}
-
-			const info = await mailer.sendMail(message);
-			console.log(info);
-
-			const salt = await bcryptjs.genSalt(10);
-			const hashedPassword = await bcryptjs.hash(newpass, salt);
-
-			client = client[0][0];
-
-			query = `UPDATE usuario  SET
-						password    = '${hashedPassword}', 
-						updated_at  = '${fecha}'
-						WHERE id    = ${client.id}`;
-
-			let result = await db.pool.query(query);
+		// 4. Generar y enviar la nueva contraseña
+		let newpass = Math.random().toString(36).substring(0, 6);
+		let message = {
+			from: process.env.MAIL,
+			to: correoClient,
+			subject: "Cambio de Contraseña",
+			html: `<p>Su nueva contraseña es: <strong>${newpass}</strong></p>`,
 		}
 
-		res.status(200).json({ error: false, msg: "Se ha enviado el correo electronico" })
+		await mailer.sendMail(message);
+
+		// 5. Actualizar la contraseña en la base de datos
+		const salt = await bcryptjs.genSalt(10);
+		const hashedPassword = await bcryptjs.hash(newpass, salt);
+
+		query = `UPDATE usuario SET
+					password    = '${hashedPassword}', 
+					updated_at  = '${fecha}'
+					WHERE id    = ${user.id}`;
+
+		await db.pool.query(query);
+		
+		res.status(200).json({ error: false, msg: "Se ha enviado el correo electrónico" });
 
 	} catch (error) {
-		console.log(error);
-		res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
+		console.error(error);
+		res.status(500).json({ msg: 'Hubo un error en el servidor', error: true, details: error.message });
 	}
-})
+});
 
 app.get('/obtener/:id', async (req, res) => {
 	try {
