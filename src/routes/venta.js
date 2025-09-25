@@ -1155,69 +1155,80 @@ app.put('/setFecha', async (req, res) => {
 
 app.put('/checkin', async (req, res) => {
     try {
-        const { idReservacion, viajeTour_id } = req.body
+        const { idReservacion } = req.body;
 
-        //revisamos si existe el numero de reservacion
-        let query = `SELECT * FROM venta WHERE id_reservacion = '${idReservacion}'`;
-        let existReservacion = await db.pool.query(query);
-        if (existReservacion[0].length < 1) {
-            return res.status(200).json({ error: true, msg: "El id de reservacion no existe" });
+        if (!idReservacion) {
+            return res.status(400).json({ error: true, msg: "idReservacion es obligatorio." });
         }
 
-        //revisamos si corresponde el id de reservacion con el id viaje tour
-        query = `SELECT viajeTour.fecha_ida, venta.* FROM venta INNER JOIN viajeTour ON venta.viajeTour_id = viajeTour.id WHERE id_reservacion = '${idReservacion}' AND viajeTour_id = ${viajeTour_id}`;
-        let correspondeIdVT = await db.pool.query(query);
-        if (correspondeIdVT[0].length < 1) {
-            return res.status(200).json({ error: true, msg: "La reservación no corresponde al tour seleccionado" });
+        // Obtener venta
+        const queryVenta = `
+            SELECT v.*, vt.fecha_ida
+            FROM venta AS v
+            INNER JOIN viajeTour AS vt ON v.viajeTour_id = vt.id
+            WHERE v.id_reservacion = ?;
+        `;
+        const [venta] = await db.pool.query(queryVenta, [idReservacion]);
+
+        if (venta.length === 0) {
+            return res.status(404).json({ error: true, msg: "El id de reservacion no existe." });
         }
 
-        // Obtener datos actuales de la venta
-        let venta = correspondeIdVT[0][0];
-        let checkinActual = venta.checkin || 0; // Si es null, usar 0
-        let noBoletos = parseInt(venta.no_boletos);
+        const ventaData = venta[0];
+        const noBoletos = parseInt(ventaData.no_boletos);
+        const checkinActual = ventaData.checkin || 0;
+        const fechaIdaTour = new Date(ventaData.fecha_ida);
 
-        // Calcular nuevo valor de checkin
-        let nuevoCheckin = checkinActual + 1;
+        const now = new Date();
+        const veinteMinutosAntes = new Date(fechaIdaTour.getTime() - 20 * 60000);
+        const veinteMinutosDespues = new Date(fechaIdaTour.getTime() + 20 * 60000);
 
-        // Verificar si excede el número de boletos comprados
-        if (nuevoCheckin > noBoletos) {
-            return res.status(200).json({
+        if (now < veinteMinutosAntes || now > veinteMinutosDespues) {
+            const horaTour = fechaIdaTour.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+            return res.status(403).json({
+                error: true,
+                msg: `Check-in no válido. El tour es a las ${horaTour}.`
+            });
+        }
+
+        if (checkinActual >= noBoletos) {
+            return res.status(403).json({
                 error: true,
                 msg: `No se puede hacer checkin. Ya se han registrado ${checkinActual} de ${noBoletos} boletos comprados.`
             });
         }
 
-        let today = new Date();
-        let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
-        let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
-        let fecha = date + ' ' + time;
+        const nuevoCheckin = checkinActual + 1;
+        const fecha = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-        // Actualizar checkin incrementando en 1
-        query = `UPDATE venta SET
-                        checkin = ${nuevoCheckin},    
-                        updated_at = '${fecha}' 
-                        WHERE id_reservacion = '${idReservacion}'`;
-
-        let result = await db.pool.query(query);
-        result = result[0];
+        const queryUpdate = `
+            UPDATE venta
+            SET checkin = ?, updated_at = ?
+            WHERE id_reservacion = ?;
+        `;
+        await db.pool.query(queryUpdate, [nuevoCheckin, fecha, idReservacion]);
 
         res.status(200).json({
             error: false,
             msg: "Checkin realizado con éxito",
             data: {
+                nombre_cliente: ventaData.nombre_cliente,
+                hora_salida: fechaIdaTour.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
                 checkin_actual: nuevoCheckin,
                 total_boletos: noBoletos,
-                boletos_restantes: noBoletos - nuevoCheckin,
-                fecha_ida: venta.fecha_ida,
-                nombre_cliente: venta.nombre_cliente
+                boletos_restantes: noBoletos - nuevoCheckin
             }
         });
 
     } catch (error) {
-        console.log(error);
-        res.status(400).json({ error: true, details: error })
+        console.error("Error en el checkin:", error);
+        res.status(500).json({
+            error: true,
+            msg: "Ocurrió un error inesperado. Por favor, intente de nuevo.",
+            details: error.message
+        });
     }
-})
+});
 
 app.put('/delete', async (req, res) => {
     try {
