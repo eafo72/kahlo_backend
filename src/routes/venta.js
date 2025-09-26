@@ -1162,46 +1162,47 @@ app.put('/checkin', async (req, res) => {
             return res.status(400).json({ error: true, msg: "idReservacion es obligatorio." });
         }
 
-        // Obtener venta
-        const queryVenta = `
+        // Obtener venta + fecha_ida
+        const query = `
             SELECT v.*, vt.fecha_ida
             FROM venta AS v
             INNER JOIN viajeTour AS vt ON v.viajeTour_id = vt.id
             WHERE v.id_reservacion = ?;
         `;
-        const [venta] = await db.pool.query(queryVenta, [idReservacion]);
+        const [ventaResult] = await db.pool.query(query, [idReservacion]);
 
-        if (venta.length === 0) {
+        if (ventaResult.length === 0) {
             return res.status(404).json({ error: true, msg: "El id de reservacion no existe." });
         }
 
-        const ventaData = venta[0];
-        const noBoletos = parseInt(ventaData.no_boletos);
-        const checkinActual = ventaData.checkin || 0;
+        const venta = ventaResult[0];
+        const noBoletos = parseInt(venta.no_boletos);
+        const checkinActual = venta.checkin || 0;
+        const fechaIdaTour = new Date(venta.fecha_ida);
 
-        // Fecha del tour en UTC
-        const fechaIdaTour = new Date(ventaData.fecha_ida);
-
-        // Hora actual en UTC
         const now = new Date();
-        const nowUTC = new Date(now.getTime() + now.getTimezoneOffset() * 60000);
 
+        // Calcular ventana de ±20 minutos
         const veinteMinutosAntes = new Date(fechaIdaTour.getTime() - 20 * 60000);
         const veinteMinutosDespues = new Date(fechaIdaTour.getTime() + 20 * 60000);
 
-        // Validación de ventana de check-in
-        if (nowUTC < veinteMinutosAntes || nowUTC > veinteMinutosDespues) {
+        if (now < veinteMinutosAntes || now > veinteMinutosDespues) {
+            const fechaTourLocal = fechaIdaTour.toLocaleDateString("es-MX", {
+                timeZone: "America/Mexico_City"
+            });
             const horaTourLocal = fechaIdaTour.toLocaleTimeString("es-MX", {
                 hour: "2-digit",
                 minute: "2-digit",
-                hour12: false
+                hour12: false,
+                timeZone: "America/Mexico_City"
             });
             return res.status(403).json({
                 error: true,
-                msg: `Check-in no válido. El tour es a las ${horaTourLocal}.`
+                msg: `Check-in no válido. El tour es el ${fechaTourLocal} a las ${horaTourLocal} (hora CDMX).`
             });
         }
 
+        // Verificar que no exceda boletos
         if (checkinActual >= noBoletos) {
             return res.status(403).json({
                 error: true,
@@ -1210,30 +1211,37 @@ app.put('/checkin', async (req, res) => {
         }
 
         const nuevoCheckin = checkinActual + 1;
-        const fecha = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+        // Guardar fecha actual formateada
+        const nowFormatted = new Date().toISOString().slice(0, 19).replace("T", " ");
 
         const queryUpdate = `
             UPDATE venta
             SET checkin = ?, updated_at = ?
             WHERE id_reservacion = ?;
         `;
-        await db.pool.query(queryUpdate, [nuevoCheckin, fecha, idReservacion]);
+        await db.pool.query(queryUpdate, [nuevoCheckin, nowFormatted, idReservacion]);
 
+        const fechaTourLocal = fechaIdaTour.toLocaleDateString("es-MX", {
+            timeZone: "America/Mexico_City"
+        });
         const horaTourLocal = fechaIdaTour.toLocaleTimeString("es-MX", {
             hour: "2-digit",
             minute: "2-digit",
-            hour12: false
+            hour12: false,
+            timeZone: "America/Mexico_City"
         });
 
         res.status(200).json({
             error: false,
             msg: "Checkin realizado con éxito",
             data: {
-                nombre_cliente: ventaData.nombre_cliente,
-                hora_salida: horaTourLocal,
+                nombre_cliente: venta.nombre_cliente,
+                cantidad: noBoletos,
                 checkin_actual: nuevoCheckin,
-                total_boletos: noBoletos,
-                boletos_restantes: noBoletos - nuevoCheckin
+                boletos_restantes: noBoletos - nuevoCheckin,
+                fecha_salida: fechaTourLocal,
+                hora_salida: horaTourLocal + " (hora CDMX)"
             }
         });
 
