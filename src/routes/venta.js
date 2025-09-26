@@ -1183,8 +1183,8 @@ app.put('/checkin', async (req, res) => {
         const now = new Date();
 
         // Calcular ventana de ±20 minutos
-        const veinteMinutosAntes = new Date(fechaIdaTour.getTime() - 20 * 60000);
-        const veinteMinutosDespues = new Date(fechaIdaTour.getTime() + 20 * 60000);
+        const veinteMinutosAntes = new Date(fechaIdaTour.getTime() - 150 * 60000);
+        const veinteMinutosDespues = new Date(fechaIdaTour.getTime() + 150 * 60000);
 
         if (now < veinteMinutosAntes || now > veinteMinutosDespues) {
             const fechaTourLocal = fechaIdaTour.toLocaleDateString("es-MX", {
