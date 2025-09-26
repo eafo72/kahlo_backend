@@ -1153,6 +1153,7 @@ app.put('/setFecha', async (req, res) => {
     }
 })
 
+
 app.put('/checkin', async (req, res) => {
     try {
         const { idReservacion } = req.body;
@@ -1177,17 +1178,27 @@ app.put('/checkin', async (req, res) => {
         const ventaData = venta[0];
         const noBoletos = parseInt(ventaData.no_boletos);
         const checkinActual = ventaData.checkin || 0;
+
+        // Fecha del tour en UTC
         const fechaIdaTour = new Date(ventaData.fecha_ida);
 
+        // Hora actual en UTC
         const now = new Date();
+        const nowUTC = new Date(now.getTime() + now.getTimezoneOffset() * 60000);
+
         const veinteMinutosAntes = new Date(fechaIdaTour.getTime() - 20 * 60000);
         const veinteMinutosDespues = new Date(fechaIdaTour.getTime() + 20 * 60000);
 
-        if (now < veinteMinutosAntes || now > veinteMinutosDespues) {
-            const horaTour = fechaIdaTour.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        // Validación de ventana de check-in
+        if (nowUTC < veinteMinutosAntes || nowUTC > veinteMinutosDespues) {
+            const horaTourLocal = fechaIdaTour.toLocaleTimeString("es-MX", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false
+            });
             return res.status(403).json({
                 error: true,
-                msg: `Check-in no válido. El tour es a las ${horaTour}.`
+                msg: `Check-in no válido. El tour es a las ${horaTourLocal}.`
             });
         }
 
@@ -1208,12 +1219,18 @@ app.put('/checkin', async (req, res) => {
         `;
         await db.pool.query(queryUpdate, [nuevoCheckin, fecha, idReservacion]);
 
+        const horaTourLocal = fechaIdaTour.toLocaleTimeString("es-MX", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false
+        });
+
         res.status(200).json({
             error: false,
             msg: "Checkin realizado con éxito",
             data: {
                 nombre_cliente: ventaData.nombre_cliente,
-                hora_salida: fechaIdaTour.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+                hora_salida: horaTourLocal,
                 checkin_actual: nuevoCheckin,
                 total_boletos: noBoletos,
                 boletos_restantes: noBoletos - nuevoCheckin
