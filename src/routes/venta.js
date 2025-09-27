@@ -231,8 +231,11 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
                     lugares_disp: 'sin_hora'
                 };
             }
-            let hora = horaCampo.split(":")[0];
-            let queryViaje = `SELECT * FROM viajeTour WHERE CAST(fecha_ida AS DATE) = '${fecha}' AND HOUR(CAST(fecha_ida AS TIME)) = '${hora}' AND tour_id = ${tourId}`;
+            
+            //let hora = horaCampo.split(":")[0];
+            //let queryViaje = `SELECT * FROM viajeTour WHERE CAST(fecha_ida AS DATE) = '${fecha}' AND HOUR(CAST(fecha_ida AS TIME)) = '${hora}' AND tour_id = ${tourId}`;
+            let queryViaje = `SELECT * FROM viajeTour WHERE CAST(fecha_ida AS DATE) = '${fecha}' AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCampo}' AND tour_id = ${tourId}`;
+
             console.log('[HORARIOS] query viajeTour:', queryViaje);
             let viajeResult = await db.pool.query(queryViaje);
             console.log('[HORARIOS] viajeResult:', viajeResult[0]);
