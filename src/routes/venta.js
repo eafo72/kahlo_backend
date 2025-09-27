@@ -1157,12 +1157,10 @@ app.put('/setFecha', async (req, res) => {
 app.put('/checkin', async (req, res) => {
     try {
         const { idReservacion } = req.body;
-
         if (!idReservacion) {
             return res.status(400).json({ error: true, msg: "idReservacion es obligatorio." });
         }
-
-        // Obtener venta + fecha_ida
+        // Obtener venta + fecha_ida (Consulta Segura con Placeholder ?)
         const query = `
             SELECT v.*, vt.fecha_ida
             FROM venta AS v
@@ -1170,23 +1168,29 @@ app.put('/checkin', async (req, res) => {
             WHERE v.id_reservacion = ?;
         `;
         const [ventaResult] = await db.pool.query(query, [idReservacion]);
-
         if (ventaResult.length === 0) {
             return res.status(404).json({ error: true, msg: "El id de reservacion no existe." });
         }
-
         const venta = ventaResult[0];
         const noBoletos = parseInt(venta.no_boletos);
         const checkinActual = venta.checkin || 0;
-        const fechaIdaTour = new Date(venta.fecha_ida);
-
-        const now = new Date();
-
+        const fechaIdaTour = new Date(venta.fecha_ida); // Hora del tour (interpretada como UTC)
+        const now = new Date(); // Hora actual del servidor (UTC)
+        
+        // **********************************************
+        // ******* CORRECCIÓN DE ZONA HORARIA CDMX *******
+        // **********************************************
+        // 1. Obtener la hora actual de CDMX como un string, gestionando DST.
+        const nowCDMXString = now.toLocaleString("en-US", { timeZone: "America/Mexico_City", hour12: false });
+        
+        // 2. Convertir el string de CDMX a un objeto Date para obtener el timestamp correcto de CDMX.
+        const nowCDMXValidation = new Date(nowCDMXString); 
+        
         // Calcular ventana de ±20 minutos
-        const veinteMinutosAntes = new Date(fechaIdaTour.getTime() - 150 * 60000);
-        const veinteMinutosDespues = new Date(fechaIdaTour.getTime() + 150 * 60000);
-
-        if (now < veinteMinutosAntes || now > veinteMinutosDespues) {
+        const veinteMinutosAntes = new Date(fechaIdaTour.getTime() - 20 * 60000);
+        const veinteMinutosDespues = new Date(fechaIdaTour.getTime() + 20 * 60000);
+        // *** USAR nowCDMXValidation para la comparación en lugar de 'now' (UTC) ***
+        if (nowCDMXValidation < veinteMinutosAntes || nowCDMXValidation > veinteMinutosDespues) {
             const fechaTourLocal = fechaIdaTour.toLocaleDateString("es-MX", {
                 timeZone: "America/Mexico_City"
             });
@@ -1201,7 +1205,6 @@ app.put('/checkin', async (req, res) => {
                 msg: `Check-in no válido. El tour es el ${fechaTourLocal} a las ${horaTourLocal} (hora CDMX).`
             });
         }
-
         // Verificar que no exceda boletos
         if (checkinActual >= noBoletos) {
             return res.status(403).json({
@@ -1209,19 +1212,17 @@ app.put('/checkin', async (req, res) => {
                 msg: `No se puede hacer checkin. Ya se han registrado ${checkinActual} de ${noBoletos} boletos comprados.`
             });
         }
-
         const nuevoCheckin = checkinActual + 1;
-
-        // Guardar fecha actual formateada
+        // Guardar fecha actual formateada (Formato SQL seguro en UTC)
         const nowFormatted = new Date().toISOString().slice(0, 19).replace("T", " ");
-
         const queryUpdate = `
             UPDATE venta
             SET checkin = ?, updated_at = ?
             WHERE id_reservacion = ?;
         `;
+        // Consulta Segura con Placeholders
         await db.pool.query(queryUpdate, [nuevoCheckin, nowFormatted, idReservacion]);
-
+        // Formatear las fechas para la respuesta de éxito (para el cliente)
         const fechaTourLocal = fechaIdaTour.toLocaleDateString("es-MX", {
             timeZone: "America/Mexico_City"
         });
@@ -1231,7 +1232,6 @@ app.put('/checkin', async (req, res) => {
             hour12: false,
             timeZone: "America/Mexico_City"
         });
-
         res.status(200).json({
             error: false,
             msg: "Checkin realizado con éxito",
@@ -1244,7 +1244,6 @@ app.put('/checkin', async (req, res) => {
                 hora_salida: horaTourLocal + " (hora CDMX)"
             }
         });
-
     } catch (error) {
         console.error("Error en el checkin:", error);
         res.status(500).json({
@@ -1254,6 +1253,8 @@ app.put('/checkin', async (req, res) => {
         });
     }
 });
+
+
 
 app.put('/delete', async (req, res) => {
     try {
