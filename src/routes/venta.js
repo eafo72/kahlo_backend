@@ -1174,37 +1174,10 @@ app.put('/checkin', async (req, res) => {
         const venta = ventaResult[0];
         const noBoletos = parseInt(venta.no_boletos);
         const checkinActual = venta.checkin || 0;
-        const fechaIdaTour = new Date(venta.fecha_ida); // Hora del tour (interpretada como UTC)
-        const now = new Date(); // Hora actual del servidor (UTC)
+        const fechaIdaTour = new Date(venta.fecha_ida); // Aún necesario para mostrar en la respuesta
+        // --- LÓGICA DE VERIFICACIÓN DE HORARIO REMOVIDA TEMPORALMENTE ---
+        // (Se asume que el check-in siempre es válido en este punto)
         
-        // **********************************************
-        // ******* CORRECCIÓN DE ZONA HORARIA CDMX *******
-        // **********************************************
-        // 1. Obtener la hora actual de CDMX como un string, gestionando DST.
-        const nowCDMXString = now.toLocaleString("en-US", { timeZone: "America/Mexico_City", hour12: false });
-        
-        // 2. Convertir el string de CDMX a un objeto Date para obtener el timestamp correcto de CDMX.
-        const nowCDMXValidation = new Date(nowCDMXString); 
-        
-        // Calcular ventana de ±20 minutos
-        const veinteMinutosAntes = new Date(fechaIdaTour.getTime() - 20 * 60000);
-        const veinteMinutosDespues = new Date(fechaIdaTour.getTime() + 20 * 60000);
-        // *** USAR nowCDMXValidation para la comparación en lugar de 'now' (UTC) ***
-        if (nowCDMXValidation < veinteMinutosAntes || nowCDMXValidation > veinteMinutosDespues) {
-            const fechaTourLocal = fechaIdaTour.toLocaleDateString("es-MX", {
-                timeZone: "America/Mexico_City"
-            });
-            const horaTourLocal = fechaIdaTour.toLocaleTimeString("es-MX", {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: false,
-                timeZone: "America/Mexico_City"
-            });
-            return res.status(403).json({
-                error: true,
-                msg: `Check-in no válido. El tour es el ${fechaTourLocal} a las ${horaTourLocal} (hora CDMX).`
-            });
-        }
         // Verificar que no exceda boletos
         if (checkinActual >= noBoletos) {
             return res.status(403).json({
@@ -1223,6 +1196,7 @@ app.put('/checkin', async (req, res) => {
         // Consulta Segura con Placeholders
         await db.pool.query(queryUpdate, [nuevoCheckin, nowFormatted, idReservacion]);
         // Formatear las fechas para la respuesta de éxito (para el cliente)
+        // La hora del tour se sigue mostrando en CDMX para ser coherente con el frontend.
         const fechaTourLocal = fechaIdaTour.toLocaleDateString("es-MX", {
             timeZone: "America/Mexico_City"
         });
