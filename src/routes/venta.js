@@ -1189,8 +1189,12 @@ app.put('/checkin', async (req, res) => {
             });
         }
         const nuevoCheckin = checkinActual + 1;
-        // Guardar fecha actual formateada (Formato SQL seguro en UTC)
-        const nowFormatted = new Date().toISOString().slice(0, 19).replace("T", " ");
+        
+        let today = new Date();
+        let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
+        let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
+        let nowFormatted = date + ' ' + time;
+
         const queryUpdate = `
             UPDATE venta
             SET checkin = ?, updated_at = ?
