@@ -231,7 +231,7 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
                     lugares_disp: 'sin_hora'
                 };
             }
-            
+
             //let hora = horaCampo.split(":")[0];
             //let queryViaje = `SELECT * FROM viajeTour WHERE CAST(fecha_ida AS DATE) = '${fecha}' AND HOUR(CAST(fecha_ida AS TIME)) = '${hora}' AND tour_id = ${tourId}`;
             let queryViaje = `SELECT * FROM viajeTour WHERE CAST(fecha_ida AS DATE) = '${fecha}' AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCampo}' AND tour_id = ${tourId}`;
@@ -501,7 +501,7 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
         );
 
         res.json({ sessionId: session.id, url: session.url });
-        
+
     } catch (error) {
         console.error('Error creating checkout session:', error);
         res.status(400).json({ error: error.message });
@@ -555,10 +555,21 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     let fecha_ida_original = session.metadata.fecha_ida; // Variable separada para evitar conflictos
                     let horaCompleta = session.metadata.horaCompleta; // Variable separada para poder modificarla
 
-                    let today = new Date();
-                    let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
-                    let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
-                    let fecha = date + ' ' + time;
+                    let today = new Date().toLocaleString('es-MX', {
+                        timeZone: 'America/Mexico_City',
+                        hour12: false // formato 24 horas sin AM/PM
+                    });
+                    // Ejemplo: "29/09/2025, 23:42:08"
+                    let [datePart, timePart] = today.split(', ');
+                    let [day, month, year] = datePart.split('/');
+                    let [hours, minutes, seconds] = timePart.split(':');
+                    month = month.padStart(2, '0');
+                    day = day.padStart(2, '0');
+                    hours = hours.padStart(2, '0');
+                    minutes = minutes.padStart(2, '0');
+                    seconds = seconds.padStart(2, '0');
+                    let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
                     let seCreoRegistro = false;
                     let viajeTour = '';
                     let query = ``;
@@ -1178,9 +1189,10 @@ app.put('/checkin', async (req, res) => {
         const noBoletos = parseInt(venta.no_boletos);
         const checkinActual = venta.checkin || 0;
         const fechaIdaTour = new Date(venta.fecha_ida); // Aún necesario para mostrar en la respuesta
+
         // --- LÓGICA DE VERIFICACIÓN DE HORARIO REMOVIDA TEMPORALMENTE ---
         // (Se asume que el check-in siempre es válido en este punto)
-        
+
         // Verificar que no exceda boletos
         if (checkinActual >= noBoletos) {
             return res.status(403).json({
@@ -1189,11 +1201,24 @@ app.put('/checkin', async (req, res) => {
             });
         }
         const nuevoCheckin = checkinActual + 1;
-        
-        let today = new Date();
-        let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
-        let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
-        let nowFormatted = date + ' ' + time;
+
+        let today = new Date().toLocaleString('es-MX', {
+            timeZone: 'America/Mexico_City',
+            hour12: false // formato 24 horas sin AM/PM
+        });
+        // Ejemplo: "29/09/2025, 23:42:08"
+
+        let [datePart, timePart] = today.split(', ');
+        let [day, month, year] = datePart.split('/');
+        let [hours, minutes, seconds] = timePart.split(':');
+
+        month = month.padStart(2, '0');
+        day = day.padStart(2, '0');
+        hours = hours.padStart(2, '0');
+        minutes = minutes.padStart(2, '0');
+        seconds = seconds.padStart(2, '0');
+
+        let nowFormatted = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 
         const queryUpdate = `
             UPDATE venta
@@ -1297,11 +1322,6 @@ app.put('/active', async (req, res) => {
     }
 });
 
-const dgram = require('dgram');
-const udpClient = dgram.createSocket('udp4');
-const UDP_IP = '192.168.100.222'; // destino
-const UDP_PORT = 2022;            // puerto destino
-
 
 app.post('/verificarQr', async (req, res) => {
     try {
@@ -1310,7 +1330,7 @@ app.post('/verificarQr', async (req, res) => {
         // Revisa si existe el número de reservación
         let query = `SELECT id_reservacion FROM venta WHERE id_reservacion = '${idReservacion}'`;
         let existReservacion = await db.pool.query(query);
-        
+
         if (existReservacion[0].length < 1) {
             return res.status(200).json({ error: true, msg: "El QR de reservación no existe." });
         }
@@ -1327,9 +1347,9 @@ app.post('/verificarQr', async (req, res) => {
         });
 
         // Devuelve un mensaje de éxito
-        res.status(200).json({ 
-            error: false, 
-            msg: "El QR de reservación es válido y se envió por UDP." 
+        res.status(200).json({
+            error: false,
+            msg: "El QR de reservación es válido y se envió por UDP."
         });
 
     } catch (error) {
@@ -1383,9 +1403,9 @@ app.get('/success', (req, res) => {
 
 // Historial de compras por usuario (cliente_id)
 app.get('/compras/:clienteId', async (req, res) => {
-  try {
-    const clienteId = req.params.clienteId;
-    let query = `
+    try {
+        const clienteId = req.params.clienteId;
+        let query = `
       SELECT 
         v.id, 
         v.id_reservacion, 
@@ -1402,12 +1422,12 @@ app.get('/compras/:clienteId', async (req, res) => {
       WHERE v.cliente_id = ${clienteId}
       ORDER BY v.fecha_compra DESC
     `;
-    let compras = await db.pool.query(query);
-    res.status(200).json({ error: false, data: compras[0] });
-  } catch (error) {
-    console.error("Error en historial de compras:", error);
-    res.status(500).json({ error: true, msg: "Error obteniendo historial", details: error });
-  }
+        let compras = await db.pool.query(query);
+        res.status(200).json({ error: false, data: compras[0] });
+    } catch (error) {
+        console.error("Error en historial de compras:", error);
+        res.status(500).json({ error: true, msg: "Error obteniendo historial", details: error });
+    }
 });
 
 
