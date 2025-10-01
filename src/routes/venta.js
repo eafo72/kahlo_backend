@@ -1201,25 +1201,27 @@ app.put('/checkin', async (req, res) => {
              });
          }
         
-       // --- VERIFICACIÓN DE HORARIO ±2 HORAS ---
-const [horaTourHoras, horaTourMinutos] = fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit" }).split(":").map(Number);
-const [ahoraHoras, ahoraMinutos] = nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit" }).split(":").map(Number);
-const totalMinutosTour = horaTourHoras * 60 + horaTourMinutos;
-const totalMinutosAhora = ahoraHoras * 60 + ahoraMinutos;
-const diferencia = totalMinutosAhora - totalMinutosTour; // diferencia en minutos
-if (Math.abs(diferencia) > 20) {
-    return res.status(403).json({
-        error: true,
-        msg: "Check-in no válido. El tour está fuera del rango permitido ±20 minutos.",
-        hora_tour_utc: fechaIdaTourUTC.toISOString(),
-        hora_tour_cdmx: fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
-        ahora_utc: now.toISOString(),
-        ahora_cdmx: nowCDMX.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
-        diferencia_minutos: diferencia,
-        rango_inicio: new Date(fechaIdaTourCDMX.getTime() - 120 * 60000).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
-        rango_fin: new Date(fechaIdaTourCDMX.getTime() + 120 * 60000).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
-    });
-}
+      // --- VERIFICACIÓN DE HORARIO ±20 MINUTOS --- 
+       /*
+       const [horaTourHoras, horaTourMinutos] = fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit" }).split(":").map(Number);
+       const [ahoraHoras, ahoraMinutos] = nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit" }).split(":").map(Number);
+       const totalMinutosTour = horaTourHoras * 60 + horaTourMinutos;
+       const totalMinutosAhora = ahoraHoras * 60 + ahoraMinutos;
+       const diferencia = totalMinutosAhora - totalMinutosTour; // diferencia en minutos
+       if (Math.abs(diferencia) > 20) {
+           return res.status(403).json({
+               error: true,
+               msg: "Check-in no válido. El tour está fuera del rango permitido ±20 minutos.",
+               hora_tour_utc: fechaIdaTourUTC.toISOString(),
+               hora_tour_cdmx: fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
+               ahora_utc: now.toISOString(),
+               ahora_cdmx: nowCDMX.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
+               diferencia_minutos: diferencia,
+               rango_inicio: new Date(fechaIdaTourCDMX.getTime() - 120 * 60000).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
+               rango_fin: new Date(fechaIdaTourCDMX.getTime() + 120 * 60000).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
+           });
+       }
+       */
         // Verificar que no exceda boletos
         if (checkinActual >= noBoletos) {
             return res.status(403).json({
