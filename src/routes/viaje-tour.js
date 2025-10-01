@@ -19,7 +19,7 @@ const db = require('../config/db')
 app.get('/viaje-Tours', async (req, res) => {
     try {
         let query = `SELECT v.id, v.id_reservacion, v.no_boletos, 
-                        pagado, fecha_compra, comision, status_traspaso, v.created_at, v.updated_at, v.cliente_id, v.viajeTour_id, v.total,
+                        pagado, fecha_compra, comision, status_traspaso, v.created_at, v.updated_at, v.cliente_id, v.viajeTour_id, v.total, v.checkin,
                         vt.fecha_ida, vt.fecha_regreso, vt.status, vt.tour_id, vt.guia_id, vt.geo_llegada, vt.geo_salida, vt.status_viaje,
                         t.nombre AS nombreTour
                         FROM venta 
