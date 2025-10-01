@@ -1193,13 +1193,17 @@ app.put('/checkin', async (req, res) => {
         const nowCDMX = new Date(now.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
         const fechaIdaTourCDMX = new Date(fechaIdaTourUTC.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
       
+        
         // VERIFICACIÓN DEL DÍA (comentada por ahora)
+        /*
          if (nowCDMX.toDateString() !== fechaIdaTourCDMX.toDateString()) {
              return res.status(403).json({
                  error: true,
                  msg: `Check-in solo permitido el día del tour (${fechaIdaTourCDMX.toLocaleDateString("es-MX")}).`
              });
          }
+        
+         */
         
       // --- VERIFICACIÓN DE HORARIO ±20 MINUTOS --- 
        /*
@@ -1247,10 +1251,7 @@ app.put('/checkin', async (req, res) => {
             minute: "2-digit",
             hour12: false
         });
-        res.status(200).json({
-            error: false,
-            msg: "Checkin realizado con éxito",
-            data: {
+        /*
                 nombre_cliente: venta.nombre_cliente,
                 cantidad: noBoletos,
                 checkin_actual: nuevoCheckin,
@@ -1264,7 +1265,11 @@ app.put('/checkin', async (req, res) => {
                 diferencia_minutos: diferencia,
                 rango_inicio: new Date(fechaIdaTourCDMX.getTime() - 120 * 60000).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
                 rango_fin: new Date(fechaIdaTourCDMX.getTime() + 120 * 60000).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
-            }
+        */
+        res.status(200).json({
+            error: false,
+            msg: "Checkin realizado con éxito",
+            data: {}
         });
     } catch (error) {
         console.error("Error en el checkin:", error);
