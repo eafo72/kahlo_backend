@@ -112,7 +112,7 @@ app.get('/historial/:id', async (req, res) => {
     try {
         let clienteId = req.params.id;
         let query = `SELECT u.nombres AS nombreUsuario, u.apellidos AS apellidoUsuario, u.correo AS correoUsuario, v.id, v.id_reservacion, v.no_boletos, 
-                        pagado, fecha_compra, comision, status_traspaso, v.created_at, v.updated_at, v.cliente_id, v.viajeTour_id, v.total,
+                        pagado, fecha_compra, comision, status_traspaso, v.created_at, v.updated_at, v.cliente_id, v.viajeTour_id, v.total, v.checkin
                         vt.fecha_ida, vt.fecha_regreso, vt.status, vt.tour_id, vt.guia_id, vt.geo_llegada, vt.geo_salida, vt.status_viaje,
                         t.nombre AS nombreTour
                         FROM venta 
@@ -208,7 +208,7 @@ app.post('/historialByCorreo', async (req, res) => {
     try {
         let clienteCorreo = req.body.correo;
         let query = `SELECT u.nombres AS nombreUsuario, u.apellidos AS apellidoUsuario, u.correo AS correoUsuario, v.id, v.id_reservacion, v.no_boletos, 
-                        pagado, fecha_compra, comision, status_traspaso, v.created_at, v.updated_at, v.cliente_id, v.viajeTour_id, v.total,
+                        pagado, fecha_compra, comision, status_traspaso, v.created_at, v.updated_at, v.cliente_id, v.viajeTour_id, v.total, v.checkin,
                         vt.fecha_ida, vt.fecha_regreso, vt.status, vt.tour_id, vt.guia_id, vt.geo_llegada, vt.geo_salida, vt.status_viaje,
                         t.nombre AS nombreTour
                         FROM venta 
@@ -239,7 +239,7 @@ app.get('/historialByEmpresa/:emId/admin/:adId', async (req, res) => {
         let adminId = req.params.adId;
 
         let query = `SELECT u.nombres AS nombreUsuario, u.apellidos AS apellidoUsuario, u.correo AS correoUsuario, v.id, v.id_reservacion, v.no_boletos, 
-                        pagado, fecha_compra, comision, status_traspaso, v.created_at, v.updated_at, v.cliente_id, v.viajeTour_id, v.total,
+                        pagado, fecha_compra, comision, status_traspaso, v.created_at, v.updated_at, v.cliente_id, v.viajeTour_id, v.total, v.checkin,
                         vt.fecha_ida, vt.fecha_regreso, vt.status, vt.tour_id, vt.guia_id, vt.geo_llegada, vt.geo_salida, vt.status_viaje,
                         t.nombre AS nombreTour, t.empresa_id, e.nombre AS nombreEmpresa, ad.id
                         FROM venta 

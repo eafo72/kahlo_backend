@@ -1174,7 +1174,7 @@ app.put('/checkin', async (req, res) => {
         if (!idReservacion) {
             return res.status(400).json({ error: true, msg: "idReservacion es obligatorio." });
         }
-        // Obtener venta + fecha_ida (Consulta Segura con Placeholder ?)
+        // Obtener venta + fecha_ida
         const query = `
             SELECT v.*, vt.fecha_ida
             FROM venta AS v
@@ -1188,11 +1188,38 @@ app.put('/checkin', async (req, res) => {
         const venta = ventaResult[0];
         const noBoletos = parseInt(venta.no_boletos);
         const checkinActual = venta.checkin || 0;
-        const fechaIdaTour = new Date(venta.fecha_ida); // Aún necesario para mostrar en la respuesta
-
-        // --- LÓGICA DE VERIFICACIÓN DE HORARIO REMOVIDA TEMPORALMENTE ---
-        // (Se asume que el check-in siempre es válido en este punto)
-
+        const fechaIdaTourUTC = new Date(venta.fecha_ida);
+        const now = new Date();
+        const nowCDMX = new Date(now.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
+        const fechaIdaTourCDMX = new Date(fechaIdaTourUTC.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
+      
+        // VERIFICACIÓN DEL DÍA (comentada por ahora)
+         if (nowCDMX.toDateString() !== fechaIdaTourCDMX.toDateString()) {
+             return res.status(403).json({
+                 error: true,
+                 msg: `Check-in solo permitido el día del tour (${fechaIdaTourCDMX.toLocaleDateString("es-MX")}).`
+             });
+         }
+        
+       // --- VERIFICACIÓN DE HORARIO ±2 HORAS ---
+const [horaTourHoras, horaTourMinutos] = fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit" }).split(":").map(Number);
+const [ahoraHoras, ahoraMinutos] = nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit" }).split(":").map(Number);
+const totalMinutosTour = horaTourHoras * 60 + horaTourMinutos;
+const totalMinutosAhora = ahoraHoras * 60 + ahoraMinutos;
+const diferencia = totalMinutosAhora - totalMinutosTour; // diferencia en minutos
+if (Math.abs(diferencia) > 20) {
+    return res.status(403).json({
+        error: true,
+        msg: "Check-in no válido. El tour está fuera del rango permitido ±20 minutos.",
+        hora_tour_utc: fechaIdaTourUTC.toISOString(),
+        hora_tour_cdmx: fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
+        ahora_utc: now.toISOString(),
+        ahora_cdmx: nowCDMX.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
+        diferencia_minutos: diferencia,
+        rango_inicio: new Date(fechaIdaTourCDMX.getTime() - 120 * 60000).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
+        rango_fin: new Date(fechaIdaTourCDMX.getTime() + 120 * 60000).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
+    });
+}
         // Verificar que no exceda boletos
         if (checkinActual >= noBoletos) {
             return res.status(403).json({
@@ -1201,42 +1228,22 @@ app.put('/checkin', async (req, res) => {
             });
         }
         const nuevoCheckin = checkinActual + 1;
-
-        let today = new Date().toLocaleString('es-MX', {
-            timeZone: 'America/Mexico_City',
-            hour12: false // formato 24 horas sin AM/PM
-        });
-        // Ejemplo: "29/09/2025, 23:42:08"
-
-        let [datePart, timePart] = today.split(', ');
-        let [day, month, year] = datePart.split('/');
-        let [hours, minutes, seconds] = timePart.split(':');
-
-        month = month.padStart(2, '0');
-        day = day.padStart(2, '0');
-        hours = hours.padStart(2, '0');
-        minutes = minutes.padStart(2, '0');
-        seconds = seconds.padStart(2, '0');
-
-        let nowFormatted = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-
+        // Guardar fecha actual formateada (CDMX)
+        let today = new Date();
+        let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
+        let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
+        let fecha = date + ' ' + time;
         const queryUpdate = `
             UPDATE venta
             SET checkin = ?, updated_at = ?
             WHERE id_reservacion = ?;
         `;
-        // Consulta Segura con Placeholders
-        await db.pool.query(queryUpdate, [nuevoCheckin, nowFormatted, idReservacion]);
-        // Formatear las fechas para la respuesta de éxito (para el cliente)
-        // La hora del tour se sigue mostrando en CDMX para ser coherente con el frontend.
-        const fechaTourLocal = fechaIdaTour.toLocaleDateString("es-MX", {
-            timeZone: "America/Mexico_City"
-        });
-        const horaTourLocal = fechaIdaTour.toLocaleTimeString("es-MX", {
+        await db.pool.query(queryUpdate, [nuevoCheckin, fecha, idReservacion]);
+        const fechaTourLocal = fechaIdaTourCDMX.toLocaleDateString("es-MX");
+        const horaTourLocal = fechaIdaTourCDMX.toLocaleTimeString("es-MX", {
             hour: "2-digit",
             minute: "2-digit",
-            hour12: false,
-            timeZone: "America/Mexico_City"
+            hour12: false
         });
         res.status(200).json({
             error: false,
@@ -1247,7 +1254,14 @@ app.put('/checkin', async (req, res) => {
                 checkin_actual: nuevoCheckin,
                 boletos_restantes: noBoletos - nuevoCheckin,
                 fecha_salida: fechaTourLocal,
-                hora_salida: horaTourLocal + " (hora CDMX)"
+                hora_salida: horaTourLocal + " (hora CDMX)",
+                hora_tour_utc: fechaIdaTourUTC.toISOString(),
+                hora_tour_cdmx: horaTourLocal,
+                ahora_utc: now.toISOString(),
+                ahora_cdmx: nowCDMX.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
+                diferencia_minutos: diferencia,
+                rango_inicio: new Date(fechaIdaTourCDMX.getTime() - 120 * 60000).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
+                rango_fin: new Date(fechaIdaTourCDMX.getTime() + 120 * 60000).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
             }
         });
     } catch (error) {
