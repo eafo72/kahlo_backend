@@ -5,9 +5,10 @@ const helmet = require('helmet');
 
 const customRateLimit = require('./src/middlewares/customRateLimit');
 
-const cors = require('cors')
+const cors = require('cors');
 
-const app = express()
+const app = express();
+
 
 // 1) Middleware de seguridad general
 app.use(helmet());
@@ -187,6 +188,7 @@ const viajeTourRoutes = require('./src/routes/viaje-tour')
 const comentarioRoutes = require('./src/routes/comentario')
 const ventaRoutes = require('./src/routes/venta')
 const photosRoutes = require('./src/routes/photos')
+const fotografiasRoutes = require('./src/routes/fotografias') 
 
 app.use('/usuario', userRoutes)
 app.use('/admin/admin', adminRoutes)
@@ -201,6 +203,7 @@ app.use('/admin/viaje-tour', viajeTourRoutes)
 app.use('/cliente/comentario', comentarioRoutes)
 app.use('/venta', ventaRoutes)
 app.use('/photos', photosRoutes)
+app.use('/fotografias', fotografiasRoutes)
 
 // Stripe webhook endpoint directo (sin prefijo /venta)
 app.use('/stripe', ventaRoutes)
