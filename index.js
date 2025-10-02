@@ -188,7 +188,9 @@ const viajeTourRoutes = require('./src/routes/viaje-tour')
 const comentarioRoutes = require('./src/routes/comentario')
 const ventaRoutes = require('./src/routes/venta')
 const photosRoutes = require('./src/routes/photos')
-const fotografiasRoutes = require('./src/routes/fotografias') 
+
+const fotografiasModule = require('./src/routes/fotografias');
+const fotografiasRoutes = fotografiasModule.router;
 
 app.use('/usuario', userRoutes)
 app.use('/admin/admin', adminRoutes)

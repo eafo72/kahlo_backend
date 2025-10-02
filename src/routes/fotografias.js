@@ -14,24 +14,20 @@ require('dotenv').config();
 // --- INICIO DE LA INTEGRACIÓN DE GOOGLE DRIVE API ---
 // --- Configuración y Auth de Google Drive ---
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID;
-const KEYFILE_RELATIVE = JSON.parse(
+const serviceAccount = JSON.parse(
   Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEYFILE, "base64").toString("utf-8")
 );
 
-// Resolvemos la ruta para asegurar que sea absoluta
-const KEYFILE = path.resolve(KEYFILE_RELATIVE || ''); 
 
 if (!FOLDER_ID) {
   console.warn('⚠️ WARNING: DRIVE_FOLDER_ID no está definido. Las rutas de Drive fallarán.');
 }
-if (!fs.existsSync(KEYFILE)) {
-  console.warn(`⚠️ WARNING: archivo de credenciales de service account no encontrado en ${KEYFILE}. La autenticación fallará.`);
-}
+
 
 let drive;
 try {
     const auth = new google.auth.GoogleAuth({
-      keyFile: KEYFILE,
+      credentials: serviceAccount,
       scopes: ['https://www.googleapis.com/auth/drive']
     });
     drive = google.drive({ version: 'v3', auth });
