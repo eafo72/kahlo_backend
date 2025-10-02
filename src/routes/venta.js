@@ -166,7 +166,7 @@ app.get('/obtenerByViajeTourId/:id', async (req, res) => {
     }
 })
 
-//la feha esta definida por AAAA-MM-DD y la hora desde 00 hasta 23
+//la feha esta definida por AAAA-MM-DD y la hora desde 00 hasta 23 Y LOS MINUTOS
 app.get('/disponibilidad/:tourid/fecha/:fecha/:hora', async (req, res) => {
     try {
         let fecha = req.params.fecha;
@@ -176,7 +176,7 @@ app.get('/disponibilidad/:tourid/fecha/:fecha/:hora', async (req, res) => {
                         * 
                         FROM viajeTour 
                         WHERE CAST(fecha_ida AS DATE) = '${fecha}'
-                        AND HOUR(CAST(fecha_ida AS TIME)) = '${hora}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora}'
                         AND tour_id = ${tourId};`;
         let disponibilidad = await db.pool.query(query);
         disponibilidad = disponibilidad[0];
@@ -303,7 +303,7 @@ app.post('/crear', async (req, res) => {
                         * 
                         FROM viajeTour 
                         WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
-                        AND HOUR(CAST(fecha_ida AS TIME)) = '${hora[0]}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCompleta}'
                         AND tour_id = ${tourId};`;
                 let disponibilidad = await db.pool.query(query);
                 disponibilidad = disponibilidad[0];
@@ -589,7 +589,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     * 
                     FROM viajeTour 
                     WHERE CAST(fecha_ida AS DATE) = '${fecha_ida_original}'
-                    AND HOUR(CAST(fecha_ida AS TIME)) = '${hora[0]}'
+                    AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCompleta}'
                     AND tour_id = ${tourId};`;
                         let disponibilidad = await db.pool.query(query);
                         disponibilidad = disponibilidad[0];
@@ -816,7 +816,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     console.log('Email enviado al cliente:', info2);
 
 
-                    console.log(` Venta creada exitosamente: ${id_reservacion}, viajeTourId: ${viajeTourId}`);
+                    console.log(` Venta creada exitosamente: ${id_reservacion}, viajeTourId: ${viajeTourId}, fecha: ${fecha_ida_original}, hora: ${horaCompleta}`);
 
                 } catch (error) {
                     console.error('Error procesando pago en webhook:', error);
@@ -1000,7 +1000,7 @@ app.put('/setFecha', async (req, res) => {
                         * 
                         FROM viajeTour 
                         WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
-                        AND HOUR(CAST(fecha_ida AS TIME)) = '${hora[0]}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCompleta}'
                         AND tour_id = ${tourId};`;
                 let disponibilidad = await db.pool.query(query);
                 disponibilidad = disponibilidad[0];
