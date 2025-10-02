@@ -1207,8 +1207,8 @@ app.put('/checkin', async (req, res) => {
        const [ahoraHoras, ahoraMinutos] = nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }).split(":").map(Number);
        const totalMinutosTour = horaTourHoras * 60 + horaTourMinutos;
        const totalMinutosAhora = ahoraHoras * 60 + ahoraMinutos;
-       const diferencia = totalMinutosAhora - totalMinutosTour; // diferencia en minutos
-
+      // const diferencia = totalMinutosAhora - totalMinutosTour; // diferencia en minutos
+/*
        if (Math.abs(diferencia) > 140) {
            return res.status(403).json({
                error: true,
@@ -1222,6 +1222,7 @@ app.put('/checkin', async (req, res) => {
                rango_fin: new Date(fechaIdaTourCDMX.getTime() + 120 * 60000).toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" })
            });
        }
+           */
      
         // Verificar que no exceda boletos
         if (checkinActual >= noBoletos) {
@@ -1258,14 +1259,7 @@ app.put('/checkin', async (req, res) => {
                 checkin_actual: nuevoCheckin,
                 boletos_restantes: noBoletos - nuevoCheckin,
                 fecha_salida: fechaTourLocal,
-                hora_salida: horaTourLocal + " (hora CDMX)",
-                hora_tour_utc: fechaIdaTourUTC.toISOString(),
-                hora_tour_cdmx: horaTourLocal,
-                ahora_utc: now.toISOString(),
-                ahora_cdmx: nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
-                diferencia_minutos: diferencia,
-                rango_inicio: new Date(fechaIdaTourCDMX.getTime() - 120 * 60000).toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
-                rango_fin: new Date(fechaIdaTourCDMX.getTime() + 120 * 60000).toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" })
+                hora_salida: horaTourLocal + " (hora CDMX)"
             }
         });
     } catch (error) {
