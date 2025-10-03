@@ -278,10 +278,22 @@ app.post('/crear', async (req, res) => {
     try {
         let { no_boletos, tipos_boletos, pagado, nombre_cliente, cliente_id, correo, viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
 
-        let today = new Date();
-        let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
-        let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
-        let fecha = date + ' ' + time;
+
+        let today = new Date().toLocaleString('es-MX', {
+            timeZone: 'America/Mexico_City',
+            hour12: false // formato 24 horas sin AM/PM
+        });
+        // Ejemplo: "29/09/2025, 23:42:08"
+        let [datePart, timePart] = today.split(', ');
+        let [day, month, year] = datePart.split('/');
+        let [hours, minutes, seconds] = timePart.split(':');
+        month = month.padStart(2, '0');
+        day = day.padStart(2, '0');
+        hours = hours.padStart(2, '0');
+        minutes = minutes.padStart(2, '0');
+        seconds = seconds.padStart(2, '0');
+        let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
         let seCreoRegistro = false;
         let viajeTour = '';
         let query = ``;
@@ -582,15 +594,15 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     tour = tour[0][0];
                     let duracion = tour.duracion;
                     let max_pasajeros = tour.max_pasajeros;
-                    
+
                     let hora = horaCompleta.split(':');
                     if (hora.length < 3) {
-                            horaCompleta += ':00'
+                        horaCompleta += ':00'
                     }
                     let fecha_ida_formateada = fecha_ida_original + ' ' + horaCompleta;
 
                     try {
-                        
+
                         query = `SELECT 
                         * 
                         FROM viajeTour 
