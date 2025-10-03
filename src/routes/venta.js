@@ -314,6 +314,7 @@ app.post('/crear', async (req, res) => {
                 //formateo de fechaida
                 fecha_ida += ' ' + horaCompleta;
                 console.log(fecha_ida);
+                
 
                 //formateo de fecha regreso
                 const newfecha = addMinutesToDate(new Date(fecha_ida), parseInt(duracion));
@@ -384,9 +385,9 @@ app.post('/crear', async (req, res) => {
         }
 
         query = `INSERT INTO venta 
-                        (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id) 
+                        (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id) 
                         VALUES 
-                        ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '${pagado}', '${fecha}', '0.0', '0', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}')`;
+                        ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '${pagado}', '${fecha}', '0.0', '0', '${fecha_ida}', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}')`;
 
         let result = await db.pool.query(query);
         result = result[0];
@@ -657,9 +658,9 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     */
 
                     query = `INSERT INTO venta 
-                          (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, session_id) 
+                          (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, session_id) 
                           VALUES 
-                          ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '1', '${fecha}', '0.0', '0', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}', '${session.id}')`;
+                          ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '1', '${fecha}', '0.0', '0', '${fecha_ida_formateada}', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}', '${session.id}')`;
 
                     let result = await db.pool.query(query);
                     result = result[0];
