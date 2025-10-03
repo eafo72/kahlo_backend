@@ -314,7 +314,7 @@ app.post('/crear', async (req, res) => {
                 //formateo de fechaida
                 fecha_ida += ' ' + horaCompleta;
                 console.log(fecha_ida);
-                
+
 
                 //formateo de fecha regreso
                 const newfecha = addMinutesToDate(new Date(fecha_ida), parseInt(duracion));
@@ -582,34 +582,30 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     tour = tour[0][0];
                     let duracion = tour.duracion;
                     let max_pasajeros = tour.max_pasajeros;
+                    
+                    let hora = horaCompleta.split(':');
+                    if (hora.length < 3) {
+                            horaCompleta += ':00'
+                    }
+                    let fecha_ida_formateada = fecha_ida_original + ' ' + horaCompleta;
 
                     try {
-                        let hora = horaCompleta.split(':');
-
+                        
                         query = `SELECT 
-                    * 
-                    FROM viajeTour 
-                    WHERE CAST(fecha_ida AS DATE) = '${fecha_ida_original}'
-                    AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCompleta}'
-                    AND tour_id = ${tourId};`;
+                        * 
+                        FROM viajeTour 
+                        WHERE CAST(fecha_ida AS DATE) = '${fecha_ida_original}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCompleta}'
+                        AND tour_id = ${tourId};`;
                         let disponibilidad = await db.pool.query(query);
                         disponibilidad = disponibilidad[0];
-
-                        if (hora.length < 3) {
-                            horaCompleta += ':00'
-                        }
-                        //formateo de fechaida
-                        let fecha_ida_formateada = fecha_ida_original + ' ' + horaCompleta;
 
                         //formateo de fecha regreso
                         const newfecha = addMinutesToDate(new Date(fecha_ida_formateada), parseInt(duracion));
                         const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
 
                         if (disponibilidad.length == 0) {
-                            query = `SELECT 
-                    * 
-                    FROM tour
-                    WHERE id = ${tourId}`;
+                            query = `SELECT * FROM tour WHERE id = ${tourId}`;
                             let result = await db.pool.query(query);
 
                             if (result[0].length == 0) {
@@ -623,9 +619,9 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                             guia = JSON.parse(guia);
 
                             query = `INSERT INTO viajeTour 
-                    (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
-                    VALUES 
-                    ('${fecha_ida_formateada}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
+                            (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
+                            VALUES 
+                            ('${fecha_ida_formateada}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
 
                             result = await db.pool.query(query);
                             result = result[0];
@@ -658,9 +654,9 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     */
 
                     query = `INSERT INTO venta 
-                          (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso,  created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, session_id) 
+                          (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, session_id) 
                           VALUES 
-                          ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '1', '${fecha}', '0.0', '0', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}', '${session.id}')`;
+                          ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '1', '${fecha}', '0.0', '0', '${fecha_ida_formateada}', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}', '${session.id}')`;
 
                     let result = await db.pool.query(query);
                     result = result[0];
@@ -1193,38 +1189,38 @@ app.put('/checkin', async (req, res) => {
         const now = new Date();
         const nowCDMX = new Date(now.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
         const fechaIdaTourCDMX = new Date(fechaIdaTourUTC.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
-      
-        // VERIFICACIÓN DEL DÍA (comentada por ahora)
-         if (nowCDMX.toDateString() !== fechaIdaTourCDMX.toDateString()) {
-             return res.status(403).json({
-                 error: true,
-                 msg: `Check-in solo permitido el día del tour (${fechaIdaTourCDMX.toLocaleDateString("es-MX")}).`
-             });
-         }
-        
-      // --- VERIFICACIÓN DE HORARIO ±140 MINUTOS --- 
 
-       const [horaTourHoras, horaTourMinutos] = fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }).split(":").map(Number);
-       const [ahoraHoras, ahoraMinutos] = nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }).split(":").map(Number);
-       const totalMinutosTour = horaTourHoras * 60 + horaTourMinutos;
-       const totalMinutosAhora = ahoraHoras * 60 + ahoraMinutos;
-      // const diferencia = totalMinutosAhora - totalMinutosTour; // diferencia en minutos
-/*
-       if (Math.abs(diferencia) > 140) {
-           return res.status(403).json({
-               error: true,
-               msg: "Check-in no válido. El tour está fuera del rango permitido ±120 minutos.",
-               hora_tour_utc: fechaIdaTourUTC.toISOString(),
-               hora_tour_cdmx: fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
-               ahora_utc: now.toISOString(),    
-               ahora_cdmx: nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
-               diferencia_minutos: diferencia,
-               rango_inicio: new Date(fechaIdaTourCDMX.getTime() - 120 * 60000).toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
-               rango_fin: new Date(fechaIdaTourCDMX.getTime() + 120 * 60000).toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" })
-           });
-       }
-           */
-     
+        // VERIFICACIÓN DEL DÍA (comentada por ahora)
+        if (nowCDMX.toDateString() !== fechaIdaTourCDMX.toDateString()) {
+            return res.status(403).json({
+                error: true,
+                msg: `Check-in solo permitido el día del tour (${fechaIdaTourCDMX.toLocaleDateString("es-MX")}).`
+            });
+        }
+
+        // --- VERIFICACIÓN DE HORARIO ±140 MINUTOS --- 
+
+        const [horaTourHoras, horaTourMinutos] = fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }).split(":").map(Number);
+        const [ahoraHoras, ahoraMinutos] = nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }).split(":").map(Number);
+        const totalMinutosTour = horaTourHoras * 60 + horaTourMinutos;
+        const totalMinutosAhora = ahoraHoras * 60 + ahoraMinutos;
+        // const diferencia = totalMinutosAhora - totalMinutosTour; // diferencia en minutos
+        /*
+               if (Math.abs(diferencia) > 140) {
+                   return res.status(403).json({
+                       error: true,
+                       msg: "Check-in no válido. El tour está fuera del rango permitido ±120 minutos.",
+                       hora_tour_utc: fechaIdaTourUTC.toISOString(),
+                       hora_tour_cdmx: fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
+                       ahora_utc: now.toISOString(),    
+                       ahora_cdmx: nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
+                       diferencia_minutos: diferencia,
+                       rango_inicio: new Date(fechaIdaTourCDMX.getTime() - 120 * 60000).toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
+                       rango_fin: new Date(fechaIdaTourCDMX.getTime() + 120 * 60000).toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" })
+                   });
+               }
+                   */
+
         // Verificar que no exceda boletos
         if (checkinActual >= noBoletos) {
             return res.status(403).json({
