@@ -78,41 +78,28 @@ router.get('/buscar/:id', auth, async (req, res) => {
 });
 
 
-// --- RUTA 2: Stream de Imagen (Proxy) ---
-// GET /fotografias/imagen/:fileId
-router.get('/imagen/:fileId', auth, async (req, res) => {
+// GET /fotografias/imagen/:fileId  (PÚBLICA)
+router.get('/imagen/:fileId', async (req, res) => {
   if (!drive) return res.status(503).send('Servicio de Drive no disponible');
-
   try {
     const fileId = req.params.fileId;
     if (!fileId) return res.status(400).send('fileId requerido');
 
-    // 1. Obtener metadata para Content-Type y nombre
-    const meta = await drive.files.get(
-      { fileId, fields: 'id,name,mimeType' }
-    );
-    
+    // Obtener metadata
+    const meta = await drive.files.get({ fileId, fields: 'id,name,mimeType' });
     const mimeType = meta.data.mimeType || 'application/octet-stream';
     const fileName = meta.data.name || 'archivo';
-    
-    // 2. FORZAR LOS ENCABEZADOS DE IMAGEN
+
+    // ✅ Encabezados correctos
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${fileName.replace(/"/g,'')}"`);
-    // CRUCIAL: Encabezado de seguridad para que la imagen cargue en <img>
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); 
+    res.setHeader('Content-Disposition', `inline; filename="${fileName.replace(/"/g, '')}"`);
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Access-Control-Allow-Origin', 'https://boletos.museocasakahlo.org');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    // 3. Stream del archivo
-    const r = await drive.files.get(
-      { fileId, alt: 'media' },
-      { responseType: 'stream' }
-    );
-
-    r.data.on('error', err => {
-      console.error('Stream error:', err);
-      try { res.end(); } catch (e) {}
-    });
-
-    // 4. Pipe (conecta) el stream de Google Drive al objeto de respuesta de Express
+    // Stream del archivo
+    const r = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'stream' });
     r.data.pipe(res);
   } catch (err) {
     console.error('Error /imagen/:', err.message);
