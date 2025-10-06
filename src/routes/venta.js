@@ -1451,6 +1451,49 @@ app.get('/compras/:clienteId', async (req, res) => {
     }
 });
 
-
+// 🚀 NUEVO ENDPOINT: Verifica si una reserva específica pertenece al usuario logueado.
+// POST /venta/verificar-reserva
+// BODY: { "id_reservacion": "ID123" }
+// Requiere Token JWT (auth) para obtener req.usuario.id
+// -------------------------------------------------------------------------
+app.post('/verificar-reserva', auth, async (req, res) => {
+    try {
+        const { id_reservacion } = req.body;
+        // El ID del usuario se obtiene del middleware 'auth'
+        const usuarioId = req.usuario.id; 
+        if (!id_reservacion) {
+            return res.status(400).json({ 
+                msg: "Falta el ID de reservación en el cuerpo de la solicitud.", 
+                error: true 
+            });
+        }
+        // Query para verificar que la reserva exista Y pertenezca al usuario logeado
+        let query = `
+            SELECT 
+                id_reservacion
+            FROM venta
+            WHERE id_reservacion = ? AND cliente_id = ?; 
+        `;
+        let [venta] = await db.pool.query(query, [id_reservacion, usuarioId]);
+        
+        if (venta.length === 0) {
+            // Si no se encuentra la reserva o no pertenece al usuario
+            return res.status(404).json({ 
+                msg: "Reserva no encontrada o no pertenece al usuario.", 
+                esPropietario: false,
+                error: false 
+            });
+        }
+        // Si se encuentra y pertenece al usuario
+        res.status(200).json({ 
+            msg: "La reserva fue verificada y pertenece a tu cuenta.", 
+            esPropietario: true,
+            error: false 
+        });
+    } catch (error) {
+        console.error("Error al verificar la propiedad de la reserva:", error);
+        res.status(500).json({ msg: 'Hubo un error interno al procesar la verificación', error: true, details: error });
+    }
+});
 
 module.exports = app

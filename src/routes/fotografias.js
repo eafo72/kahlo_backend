@@ -5,6 +5,7 @@ const router = express.Router(); // Usamos router en lugar de app para este mód
 const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
+const auth = require('../middlewares/authorization')
 
 // AÑADIDO: Carga las variables de entorno inmediatamente
 // Esto garantiza que process.env esté disponible
@@ -40,7 +41,7 @@ try {
 
 // --- RUTA 1: Buscar Archivos por ID de Reservación ---
 // GET /fotografias/buscar/:id
-router.get('/buscar/:id', async (req, res) => {
+router.get('/buscar/:id', auth, async (req, res) => {
   if (!drive) return res.status(503).json({ error: 'Servicio de Drive no disponible' });
   
   try {
@@ -79,7 +80,7 @@ router.get('/buscar/:id', async (req, res) => {
 
 // --- RUTA 2: Stream de Imagen (Proxy) ---
 // GET /fotografias/imagen/:fileId
-router.get('/imagen/:fileId', async (req, res) => {
+router.get('/imagen/:fileId', auth, async (req, res) => {
   if (!drive) return res.status(503).send('Servicio de Drive no disponible');
 
   try {
