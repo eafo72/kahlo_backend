@@ -1460,7 +1460,7 @@ app.post('/verificar-reserva', auth, async (req, res) => {
     try {
         const { id_reservacion } = req.body;
         // El ID del usuario se obtiene del middleware 'auth'
-        const usuarioId = req.usuario.id; 
+        const usuarioId = req.user.id; 
         if (!id_reservacion) {
             return res.status(400).json({ 
                 msg: "Falta el ID de reservación en el cuerpo de la solicitud.", 
