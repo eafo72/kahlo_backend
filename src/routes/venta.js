@@ -1467,6 +1467,12 @@ app.post('/verificar-reserva', auth, async (req, res) => {
                 error: true 
             });
         }
+        if (!usuarioId) {
+            return res.status(400).json({ 
+                msg: "No se pudo obtener el usuarioId del token", 
+                error: true 
+            });
+        }
         // Query para verificar que la reserva exista Y pertenezca al usuario logeado
         let query = `
             SELECT 
