@@ -110,47 +110,64 @@ router.get('/imagen/:fileId', async (req, res) => {
 // ============================================================================
 // 🧩 RUTA 3: WEBHOOK DE CONTEO DE PERSONAS (MILESIGHT)
 // POST /fotografias/milesight-people-count
-// 🔓 Pública: No requiere token (Milesight no usa nuestro 'auth' middleware)
 // ============================================================================
 router.post('/milesight-people-count', (req, res) => {
   try {
     const data = req.body;
     
-    // ⚠️ NOTA IMPORTANTE: El formato exacto de 'data' depende del payload de Milesight.
-    // Usaremos valores genéricos para la demostración, por ejemplo:
-    // device_eui, people_in, people_out.
+    // ------------------------------------------
+    // PASO A: VALIDACIÓN DE SEGURIDAD DEL WEBHOOK
+    // ------------------------------------------
+    
+    // NOTA: Asumimos que Milesight envía el secret en el cuerpo (data.secret) o en el header 
+    // (X-Milesight-Secret) o como una firma (X-Milesight-Signature).
+    
+    // **Ajusta esta validación después de ver la primera solicitud de prueba.**
+    const receivedSecret = data.secret || req.headers['x-milesight-secret']; 
+    
+    if (!WEBHOOK_SECRET || receivedSecret !== WEBHOOK_SECRET) {
+        console.warn(`[MILESIGHT WEBHOOK] 🛡️ Alerta: Solicitud con Secret Inválido. Origen: ${req.ip}`);
+        // Responder 403 para indicar un acceso no autorizado.
+        return res.status(403).json({ error: 'Acceso no autorizado al Webhook' });
+    }
+
+    // ------------------------------------------
+    // PASO B: EXTRACCIÓN Y PROCESAMIENTO DE DATOS
+    // ------------------------------------------
+    
     const deviceId = data.device_eui || 'unknown-device'; 
+    
+    // *** ¡ATENCIÓN! ESTA LÓGICA DE EXTRACCIÓN DEBE AJUSTARSE TRAS EL TEST ***
     let peopleIn = 0;
     let peopleOut = 0;
     
-    // Suponiendo que el payload tiene un campo 'payload' con los contadores
-    if (data.payload && typeof data.payload === 'object') {
-        peopleIn = data.payload.people_in || 0;
-        peopleOut = data.payload.people_out || 0;
+    // 1. Caso de prueba del Webhook Test (no contiene datos de sensor)
+    if (data.eventType === 'WEBHOOK_TEST') {
+        console.log(`[MILESIGHT WEBHOOK] ✅ Prueba de Conexión Exitosa.`);
     } 
-    // Si no tiene 'payload', asumimos que los contadores están en el nivel superior
-    else {
-        peopleIn = data.people_in || 0;
-        peopleOut = data.people_out || 0;
+    // 2. Caso de datos reales del sensor
+    else if (data.eventType === 'DEVICE_DATA' && data.payload) {
+        // Debes ajustar 'people_in' y 'people_out' según el payload JSON real
+        peopleIn = data.payload.people_in || 0; 
+        peopleOut = data.payload.people_out || 0;
     }
+    
     const currentCount = peopleIn - peopleOut; 
     
-    console.log(`[MILESIGHT WEBHOOK] Datos recibidos de: ${deviceId}`);
-    console.log(`[MILESIGHT WEBHOOK] Personas que ENTRARON: ${peopleIn}`);
-    console.log(`[MILESIGHT WEBHOOK] Personas que SALIERON: ${peopleOut}`);
-    console.log(`[MILESIGHT WEBHOOK] CONTEO ACTUAL EN SALA: ${currentCount}`);
-    // Aquí iría tu lógica real:
-    // 1. Validar el origen de la solicitud (puede ser por una 'secret key' en el header/body).
-    // 2. Almacenar 'currentCount' en la base de datos (MongoDB, PostgreSQL, etc.).
-    // 3. Emitir un evento Socket.io a los clientes.
+    console.log(`[MILESIGHT WEBHOOK] Datos de ${deviceId}. Conteo: ${currentCount}`);
+
+    // Aquí iría tu lógica final (Guardar en DB, emitir Socket.io, etc.)
     // ...
-    // Responder con 200 OK es crucial para que Milesight sepa que el envío fue exitoso.
-    res.status(200).json({ status: 'success', message: 'Webhook data processed', deviceId, currentCount });
+
+    // ------------------------------------------
+    // PASO C: RESPUESTA FINAL
+    // ------------------------------------------
+    // Responder 200 OK para confirmar a Milesight la recepción exitosa.
+    res.status(200).json({ status: 'success', message: 'Webhook processed', currentCount });
     
   } catch (error) {
     console.error('❌ Error en /milesight-people-count Webhook:', error.message);
-    // Responder 500 para indicar a Milesight que reintente (si tienen esa configuración).
-    res.status(500).json({ error: 'Error procesando el Webhook' });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
