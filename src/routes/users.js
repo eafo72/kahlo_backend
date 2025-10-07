@@ -8,6 +8,7 @@ const db = require('../config/db')
 const mailer = require('../controller/mailController')
 
 const { OAuth2Client } = require('google-auth-library');
+const googleClient = new OAuth2Client('418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com');
 
 const crypto = require('crypto');
 const ENC= '907b12470477dce0917bf3c199c17bcb';
@@ -692,6 +693,71 @@ app.post('/google-login', async (req, res) => {
 	  res.status(500).json({ msg: 'Hubo un error en el servidor', error: true, details: error.message });
 	}
   });
+
+// ==========================================================
+// 🚀 LOGIN PARA PORTAL CAUTIVO (ARUBA) - EMAIL Y GOOGLE LOGIN
+// ==========================================================
+
+app.post('/loginInternet', async (req, res) => {
+  try {
+    const { email, password, id_token } = req.body;
+    res.type('text/plain'); // Aruba solo entiende texto plano
+
+    // --- OPCIÓN 1: LOGIN NORMAL ---
+    if (email && password) {
+      let [userRows] = await db.pool.query(
+        `SELECT * FROM usuario WHERE correo = ? AND status = 1`, [email]
+      );
+
+      if (userRows.length === 0) return res.send('Auth: Failed');
+
+      const user = userRows[0];
+      const passCorrecto = await bcryptjs.compare(password, user.password);
+      if (!passCorrecto) return res.send('Auth: Failed');
+
+      return res.send('Auth: Successful');
+    }
+
+    // --- OPCIÓN 2: LOGIN CON GOOGLE ---
+    if (id_token) {
+      try {
+        const ticket = await googleClient.verifyIdToken({
+          idToken: id_token,
+          audience: '418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com',
+        });
+        const payload = ticket.getPayload();
+        const emailGoogle = payload.email;
+        const nombres = payload.given_name || '';
+        const apellidos = payload.family_name || '';
+
+        // Verificar si existe el usuario
+        let [rows] = await db.pool.query(`SELECT * FROM usuario WHERE correo = ?`, [emailGoogle]);
+
+        if (rows.length === 0) {
+          // Crear nuevo usuario si no existe
+          let now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+          await db.pool.query(`
+            INSERT INTO usuario (nombres, apellidos, correo, password, isClient, status, created_at, updated_at)
+            VALUES (?, ?, ?, NULL, 1, 1, ?, ?)
+          `, [nombres, apellidos, emailGoogle, now, now]);
+        }
+
+        return res.send('Auth: Successful');
+      } catch (error) {
+        console.error("Error en Google Login para portal:", error);
+        return res.send('Auth: Failed');
+      }
+    }
+
+    // Si no se envió email/password ni token
+    return res.send('Auth: Failed');
+
+  } catch (error) {
+    console.error("Error general en /loginInternet:", error);
+    res.type('text/plain');
+    res.send('Auth: Failed');
+  }
+});  
 
 module.exports = app
 
