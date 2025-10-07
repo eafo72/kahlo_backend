@@ -742,7 +742,9 @@ app.post('/loginInternet', async (req, res) => {
           `, [nombres, apellidos, emailGoogle, now, now]);
         }
 
-        return res.send('Auth: Successful');
+        return res.send('InstantOn.Acknowledge');
+
+
       } catch (error) {
         console.error("Error en Google Login para portal:", error);
         return res.send('Auth: Failed');
