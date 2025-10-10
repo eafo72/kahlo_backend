@@ -785,6 +785,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                         horario: horaCompleta,
                         boletos: no_boletos,
                         tablaBoletos: tablaBoletos,
+                        idReservacion:id_reservacion,
                         total: total,
                         ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
                     };

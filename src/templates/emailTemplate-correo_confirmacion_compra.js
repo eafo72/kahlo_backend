@@ -39,6 +39,9 @@ module.exports = function generarEmail(data) {
                       <li>
                         <span style="font-weight:bold; color:#00695c;">Fecha y hora de acceso:</span> ${data.fecha} - ${data.horario}
                       </li>
+                      <li>
+                        <span style="font-weight:bold; color:#00695c;">Id Reservación:</span> ${data.idReservacion}
+                      </li>
                     </ul>
                     <p style="font-size:16px; color:#004d40;">Si compraste un boleto con descuento, presenta una identificación vigente que lo compruebe al entrar.</p>
                     <p style="font-size:16px; color:#004d40;">Te recordamos que tu boleto digital es tu acceso al recorrido, queda estrictamente prohibido realizar copias del mismo. Consulta términos y condiciones del boleto digital.</p>
