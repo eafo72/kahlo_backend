@@ -11,6 +11,15 @@ const QRCode = require('qrcode')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const emailTemplate = require('../templates/emailTemplate-correo_confirmacion_compra');
 
+function generarPassword(longitud = 10) {
+    const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_-+=<>?';
+    let password = '';
+    for (let i = 0; i < longitud; i++) {
+        password += caracteres.charAt(Math.floor(Math.random() * caracteres.length));
+    }
+    return password;
+}
+
 function addMinutesToDate(objDate, intMinutes) {
     var numberOfMlSeconds = objDate.getTime();
     var addMlSeconds = intMinutes * 60000;
@@ -492,6 +501,257 @@ app.post('/crear', async (req, res) => {
     }
 })
 
+app.post('/crear-admin', async (req, res) => {
+    try {
+        let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
+
+        let nombre_completo = nombre_cliente + ' ' + apellidos_cliente;
+
+        let today = new Date().toLocaleString('es-MX', {
+            timeZone: 'America/Mexico_City',
+            hour12: false // formato 24 horas sin AM/PM
+        });
+        // Ejemplo: "29/09/2025, 23:42:08"
+        let [datePart, timePart] = today.split(', ');
+        let [day, month, year] = datePart.split('/');
+        let [hours, minutes, seconds] = timePart.split(':');
+        month = month.padStart(2, '0');
+        day = day.padStart(2, '0');
+        hours = hours.padStart(2, '0');
+        minutes = minutes.padStart(2, '0');
+        seconds = seconds.padStart(2, '0');
+        let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+        let seCreoRegistro = false;
+        let viajeTour = '';
+        let query = ``;
+
+        //primero revisamos que el correo no exista
+        //Verificamos no exista el correo en la DB
+        query = `SELECT * FROM usuario WHERE correo='${correo}'`;
+
+        let existCorreo = await db.pool.query(query);
+
+        if (existCorreo[0].length >= 1) {
+            return res.status(400)
+                .json({
+                    msg: 'El correo ya esta registrado, utilice otro correo',
+                    error: true,
+                });
+        }
+
+        //generamos un password aleatorio
+        let password = generarPassword();
+        const salt = await bcryptjs.genSalt(10);
+        const hashedPassword = await bcryptjs.hash(password, salt);
+
+        //damos de alta al cliente
+        query = `INSERT INTO usuario 
+                            (nombres, apellidos, correo, password, isClient, created_at, updated_at) 
+                            VALUES 
+                            ('${nombre_cliente}', '${apellidos_cliente}', '${correo}', '${hashedPassword}', 1, '${fecha}', '${fecha}')`;
+
+
+        let newClient = await db.pool.query(query);
+        cliente_id = newClient[0].insertId;
+
+
+        //info tour para calcular fecha de regreso
+        query = `SELECT * FROM tour WHERE id = ${tourId} `;
+        let tour = await db.pool.query(query);
+        tour = tour[0][0];
+        let duracion = tour.duracion;
+        let max_pasajeros = tour.max_pasajeros;
+        //console.log(`Duracion: ${duracion}`);
+
+        if (!viajeTourId) {
+
+            try {
+                let hora = horaCompleta.split(':');
+
+                query = `SELECT 
+                        * 
+                        FROM viajeTour 
+                        WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCompleta}'
+                        AND tour_id = ${tourId};`;
+                let disponibilidad = await db.pool.query(query);
+                disponibilidad = disponibilidad[0];
+
+                if (hora.length < 3) {
+                    horaCompleta += ':00'
+                }
+                //formateo de fechaida
+                fecha_ida += ' ' + horaCompleta;
+                console.log(fecha_ida);
+
+
+                //formateo de fecha regreso
+                const newfecha = addMinutesToDate(new Date(fecha_ida), parseInt(duracion));
+                const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
+                console.log(fecha_regreso);
+
+                if (disponibilidad.length == 0) {
+                    query = `SELECT 
+                        * 
+                        FROM tour
+                        WHERE id = ${tourId}`;
+                    let result = await db.pool.query(query);
+
+                    if (result[0].length == 0) {
+                        return res.status(400).json({ msg: "Error en la busquda del tour por id", error: true, details: 'nungun registro encontrado' });
+                    }
+
+                    result = result[0][0];
+
+                    let guia = result.guias;
+                    guia = JSON.parse(guia);
+
+                    query = `INSERT INTO viajeTour 
+                        (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
+                        VALUES 
+                        ('${fecha_ida}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
+
+                    result = await db.pool.query(query);
+                    result = result[0];
+
+                    viajeTourId = result.insertId;
+                    seCreoRegistro = true;
+
+                } else {
+                    viajeTour = disponibilidad[0];
+                    viajeTourId = disponibilidad[0].id;
+                }
+
+            } catch (error) {
+                console.log(error);
+                return res.status(400).json({ msg: "Error en la creacion del registro viaje tour", error: true, details: error });
+            }
+
+        } else {
+            query = `SELECT 
+                        * 
+                        FROM viajeTour
+                        WHERE id = ${viajeTourId}`;
+            let result = await db.pool.query(query);
+            result = result[0];
+
+            if (result.length == 0) {
+                return res.status(400).json({ msg: "Error en la busquda del viaje tour por id", error: true, details: 'nungun registro encontrado' });
+            }
+            viajeTour = result[0];
+
+        }
+
+        let lugares_disp = 0;
+
+        if (seCreoRegistro) {
+            lugares_disp = max_pasajeros - no_boletos;
+        } else {
+            lugares_disp = viajeTour.lugares_disp - no_boletos;
+        }
+        if (lugares_disp < 0) {
+            return res.status(400).json({ msg: "El numero de boletos excede los lugares disponibles", error: true, details: `Lugares disponibles: ${viajeTour.lugares_disp}` });
+        }
+
+        query = `INSERT INTO venta 
+                        (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id) 
+                        VALUES 
+                        ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '${pagado}', '${fecha}', '0.0', '0', '${fecha_ida}', '${fecha}', '${fecha}', '${nombre_completo}', '${cliente_id}', '${correo}', '${viajeTourId}')`;
+
+        let result = await db.pool.query(query);
+        result = result[0];
+
+        query = `SELECT 
+                        * 
+                        FROM usuario
+                        WHERE id = ${cliente_id}`;
+        let client = await db.pool.query(query);
+
+        client = client[0];
+
+        if (client.length == 0) {
+            return res.status(400).json({ msg: "Error en la busquda de los datos del cliente", error: true, details: 'nungun registro encontrado' });
+        }
+        client = client[0];
+
+        let id_reservacion = result.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
+
+        //creamos el QR
+        const qrCodeBuffer = await generateQRCode(id_reservacion);
+
+        query = `UPDATE viajeTour SET
+                    lugares_disp = '${lugares_disp}'
+                    WHERE id     = ${viajeTourId}`;
+
+        await db.pool.query(query);
+
+        query = `UPDATE venta SET
+                    id_reservacion = '${id_reservacion}'
+                    WHERE id       = ${result.insertId}`;
+
+        await db.pool.query(query);
+
+        let html = `<div style="background-color: #eeeeee;padding: 20px; width: 400px;">
+        <div align="center" style="padding-top:20px;padding-bottom:40px"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/logodos.png" style="height:100px"/></div>
+        <p>Su compra ha sido exitosa.</p>
+
+        <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
+        <br>
+        <p style="display: inline-flex">Fecha: ${fecha_ida}</p>
+        <br>
+        <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
+        <br>
+        <p style="display: inline-flex">Tu contraseña provisional: ${password}</p>
+        <br>
+        <img src="cid:qrImage" alt="Código QR"/>
+        
+        <div style="padding-top:20px;padding-bottom:20px"><hr></div>
+        <p style="font-size:10px">Recibiste éste correo porque las preferencias de correo electrónico se configuraron para recibir notificaciones del Museo Casa Kahlo.</p>
+        <p style="font-size:10px">Te pedimos que no respondas a este correo electrónico. Si tienes alguna pregunta sobre tu cuenta, contáctanos a través de la aplicación.</p>
+        
+        <p style="font-size:10px;padding-top:20px">Copyright2025 Museo Casa Kahlo.Todos los derechos reservados.</p></div>`;
+
+        let message = {
+            from: process.env.MAIL, // sender address
+            to: process.env.MAIL, // list of receivers
+            subject: "Compra exitosa", // Subject line
+            text: "", // plain text body
+            html: `${html}`, // html body
+            attachments: [{
+                filename: 'qr.png',
+                content: qrCodeBuffer,
+                cid: 'qrImage'
+            }]
+        }
+
+        const info = await mailer.sendMail(message);
+        console.log(info);
+
+        message = {
+            from: process.env.MAIL, // sender address
+            to: correo, // list of receivers
+            subject: "Compra exitosa", // Subject line
+            text: "", // plain text body
+            html: `${html}`, // html body
+            attachments: [{
+                filename: 'qr.png',
+                content: qrCodeBuffer,
+                cid: 'qrImage'
+            }]
+        }
+
+        const info2 = await mailer.sendMail(message);
+        console.log(info2);
+
+        res.status(200).json({ msg: "Compra exitosa", id_reservacion: id_reservacion, viajeTourId: viajeTourId, error: false });
+
+    } catch (error) {
+        console.log(error);
+        res.status(400).json({ error: true, details: error })
+    }
+})
+
 app.post('/stripe/create-checkout-session', async (req, res) => {
     try {
         const { lineItems, customerEmail, successUrl, cancelUrl, metadata } = req.body;
@@ -785,7 +1045,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                         horario: horaCompleta,
                         boletos: no_boletos,
                         tablaBoletos: tablaBoletos,
-                        idReservacion:id_reservacion,
+                        idReservacion: id_reservacion,
                         total: total,
                         ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
                     };
@@ -1461,17 +1721,17 @@ app.post('/verificar-reserva', auth, async (req, res) => {
     try {
         const { id_reservacion } = req.body;
         // El ID del usuario se obtiene del middleware 'auth'
-        const usuarioId = req.user.id; 
+        const usuarioId = req.user.id;
         if (!id_reservacion) {
-            return res.status(400).json({ 
-                msg: "Falta el ID de reservación en el cuerpo de la solicitud.", 
-                error: true 
+            return res.status(400).json({
+                msg: "Falta el ID de reservación en el cuerpo de la solicitud.",
+                error: true
             });
         }
         if (!usuarioId) {
-            return res.status(400).json({ 
-                msg: "No se pudo obtener el usuarioId del token", 
-                error: true 
+            return res.status(400).json({
+                msg: "No se pudo obtener el usuarioId del token",
+                error: true
             });
         }
         // Query para verificar que la reserva exista Y pertenezca al usuario logeado
@@ -1482,20 +1742,20 @@ app.post('/verificar-reserva', auth, async (req, res) => {
             WHERE id_reservacion = ? AND cliente_id = ?; 
         `;
         let [venta] = await db.pool.query(query, [id_reservacion, usuarioId]);
-        
+
         if (venta.length === 0) {
             // Si no se encuentra la reserva o no pertenece al usuario
-            return res.status(404).json({ 
-                msg: "Reserva no encontrada o no pertenece al usuario.", 
+            return res.status(404).json({
+                msg: "Reserva no encontrada o no pertenece al usuario.",
                 esPropietario: false,
-                error: false 
+                error: false
             });
         }
         // Si se encuentra y pertenece al usuario
-        res.status(200).json({ 
-            msg: "La reserva fue verificada y pertenece a tu cuenta.", 
+        res.status(200).json({
+            msg: "La reserva fue verificada y pertenece a tu cuenta.",
             esPropietario: true,
-            error: false 
+            error: false
         });
     } catch (error) {
         console.error("Error al verificar la propiedad de la reserva:", error);
