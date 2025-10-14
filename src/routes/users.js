@@ -715,7 +715,7 @@ app.post('/loginInternet', async (req, res) => {
       const passCorrecto = await bcryptjs.compare(password, user.password);
       if (!passCorrecto) return res.send('Auth: Failed');
 
-      return res.send('InstantOn.Acknowledge');
+      return res.send('Auth:Successful');
     }
 
     // --- OPCIÓN 2: LOGIN CON GOOGLE ---
@@ -742,7 +742,7 @@ app.post('/loginInternet', async (req, res) => {
           `, [nombres, apellidos, emailGoogle, now, now]);
         }
 
-        return res.send('InstantOn.Acknowledge');
+        return res.send('Auth:Successful');
 
 
       } catch (error) {
