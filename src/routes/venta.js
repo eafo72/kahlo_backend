@@ -503,7 +503,7 @@ app.post('/crear', async (req, res) => {
 
 app.post('/crear-admin', async (req, res) => {
     try {
-        let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
+        let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
 
         let nombre_completo = nombre_cliente + ' ' + apellidos_cliente;
 
@@ -526,34 +526,40 @@ app.post('/crear-admin', async (req, res) => {
         let viajeTour = '';
         let query = ``;
 
-        //primero revisamos que el correo no exista
-        //Verificamos no exista el correo en la DB
+        
+        //Verificamos si existe el correo en la DB
+        let clienteExiste = null;
+        let cliente_id = null;
+        let password = null;
+
         query = `SELECT * FROM usuario WHERE correo='${correo}'`;
 
         let existCorreo = await db.pool.query(query);
 
         if (existCorreo[0].length >= 1) {
-            return res.status(400)
-                .json({
-                    msg: 'El correo ya esta registrado, utilice otro correo',
-                    error: true,
-                });
-        }
+            clienteExiste = true;
+            nombre_cliente = existCorreo[0][0].nombres;
+            apellidos_cliente = existCorreo[0][0].apellidos;
+            correo = existCorreo[0][0].correo;
+            nombre_completo = nombre_cliente + ' ' + apellidos_cliente;
+            cliente_id = existCorreo[0][0].id;
+        } else {
+            clienteExiste = false;
+            //generamos un password aleatorio
+            password = generarPassword();
+            const salt = await bcryptjs.genSalt(10);
+            const hashedPassword = await bcryptjs.hash(password, salt);
 
-        //generamos un password aleatorio
-        let password = generarPassword();
-        const salt = await bcryptjs.genSalt(10);
-        const hashedPassword = await bcryptjs.hash(password, salt);
-
-        //damos de alta al cliente
-        query = `INSERT INTO usuario 
-                            (nombres, apellidos, correo, password, isClient, created_at, updated_at) 
+            //damos de alta al cliente
+            query = `INSERT INTO usuario 
+                            (nombres, apellidos, correo, telefono, password, isClient, created_at, updated_at) 
                             VALUES 
-                            ('${nombre_cliente}', '${apellidos_cliente}', '${correo}', '${hashedPassword}', 1, '${fecha}', '${fecha}')`;
+                            ('${nombre_cliente}', '${apellidos_cliente}', '${correo}', '${telefono}', '${hashedPassword}', 1, '${fecha}', '${fecha}')`;
 
 
-        let newClient = await db.pool.query(query);
-        cliente_id = newClient[0].insertId;
+            let newClient = await db.pool.query(query);
+            cliente_id = newClient[0].insertId;
+        }
 
 
         //info tour para calcular fecha de regreso
@@ -692,32 +698,105 @@ app.post('/crear-admin', async (req, res) => {
 
         await db.pool.query(query);
 
-        let html = `<div style="background-color: #eeeeee;padding: 20px; width: 400px;">
-        <div align="center" style="padding-top:20px;padding-bottom:40px"><img src="https://museodesarrollo.info/assets/img/ELEMENTOS/logodos.png" style="height:100px"/></div>
-        <p>Su compra ha sido exitosa.</p>
 
-        <p style="display: inline-flex">Numero de boletos: ${no_boletos}</p>
-        <br>
-        <p style="display: inline-flex">Fecha: ${fecha_ida}</p>
-        <br>
-        <p style="display: inline-flex">Id de reservación: ${id_reservacion}</p>
-        <br>
-        <p style="display: inline-flex">Tu contraseña provisional: ${password}</p>
-        <br>
-        <img src="cid:qrImage" alt="Código QR"/>
-        
-        <div style="padding-top:20px;padding-bottom:20px"><hr></div>
-        <p style="font-size:10px">Recibiste éste correo porque las preferencias de correo electrónico se configuraron para recibir notificaciones del Museo Casa Kahlo.</p>
-        <p style="font-size:10px">Te pedimos que no respondas a este correo electrónico. Si tienes alguna pregunta sobre tu cuenta, contáctanos a través de la aplicación.</p>
-        
-        <p style="font-size:10px;padding-top:20px">Copyright2025 Museo Casa Kahlo.Todos los derechos reservados.</p></div>`;
+        ////////////////////////////////// preparacion de correo//////////////////////////////////
+        // Crear la tabla de boletos
+        let tiposBoletos = {};
+
+        try {
+            tiposBoletos = JSON.parse(tipos_boletos);
+
+            if (typeof tiposBoletos !== 'object' || tiposBoletos === null || Array.isArray(tiposBoletos)) {
+                console.error('tipos_boletos no es un objeto válido:', tiposBoletos);
+                tiposBoletos = { "General": no_boletos };
+            }
+        } catch (error) {
+            console.error('Error parseando tipos_boletos:', error);
+            tiposBoletos = { "General": no_boletos };
+        }
+
+        // 
+        const precios = {
+            tipoA: 270,
+            tipoB: 130,
+            tipoC: 65
+        };
+
+        // 
+        const nombres = {
+            tipoA: "Entrada General",
+            tipoB: "Ciudadano Mexicano",
+            tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
+        };
+
+        // 
+        let tiposBoletosArray = Object.entries(tiposBoletos).map(([tipo, cantidad]) => {
+            return {
+                nombre: nombres[tipo] || tipo,   // usa nombre bonito si existe
+                precio: precios[tipo] || 0,
+                cantidad
+            };
+        });
+
+        // 
+        let tablaBoletos = `
+  <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
+    <tr style="background-color:#f5f5f5">
+      <th style="text-align:left">Tipo de boleto</th>
+      <th style="text-align:right">Precio</th>
+      <th style="text-align:center">Cantidad</th>
+      <th style="text-align:right">Subtotal</th>
+    </tr>
+`;
+
+
+
+        tiposBoletosArray.forEach(tipo => {
+            let subtotal = Number(tipo.precio) * Number(tipo.cantidad);
+
+
+            tablaBoletos += `
+    <tr>
+      <td style="text-align:left">${tipo.nombre}</td>
+      <td style="text-align:right">$${Number(tipo.precio).toFixed(2)}</td>
+      <td style="text-align:center">${Number(tipo.cantidad)}</td>
+      <td style="text-align:right">$${Number(subtotal).toFixed(2)}</td>
+    </tr>
+  `;
+        });
+
+        tablaBoletos += `
+  <tr>
+    <td colspan="2"></td>
+    <td style="text-align:center; font-weight:bold">Total</td>
+    <td style="text-align:right; font-weight:bold">$${Number(total).toFixed(2)}</td>
+  </tr>
+</table>`;
+
+
+
+        // Datos para el template
+        const emailData = {
+            nombre: nombre_cliente,
+            password: password,
+            fecha: fecha_ida,
+            horario: horaCompleta,
+            boletos: no_boletos,
+            tablaBoletos: tablaBoletos,
+            idReservacion: id_reservacion,
+            total: total,
+            ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+        };
+
+        // Enviar el correo al admin y al cliente
+        const emailHtml = emailTemplate(emailData);
 
         let message = {
-            from: process.env.MAIL, // sender address
-            to: process.env.MAIL, // list of receivers
-            subject: "Compra exitosa", // Subject line
-            text: "", // plain text body
-            html: `${html}`, // html body
+            from: process.env.MAIL,
+            to: process.env.MAIL,
+            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            text: "",
+            html: emailHtml,
             attachments: [{
                 filename: 'qr.png',
                 content: qrCodeBuffer,
@@ -726,14 +805,14 @@ app.post('/crear-admin', async (req, res) => {
         }
 
         const info = await mailer.sendMail(message);
-        console.log(info);
+        console.log('Email enviado al admin:', info);
 
         message = {
-            from: process.env.MAIL, // sender address
-            to: correo, // list of receivers
-            subject: "Compra exitosa", // Subject line
-            text: "", // plain text body
-            html: `${html}`, // html body
+            from: process.env.MAIL,
+            to: correo,
+            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            text: "",
+            html: emailHtml,
             attachments: [{
                 filename: 'qr.png',
                 content: qrCodeBuffer,
@@ -742,9 +821,13 @@ app.post('/crear-admin', async (req, res) => {
         }
 
         const info2 = await mailer.sendMail(message);
-        console.log(info2);
+        console.log('Email enviado al cliente:', info2);
 
-        res.status(200).json({ msg: "Compra exitosa", id_reservacion: id_reservacion, viajeTourId: viajeTourId, error: false });
+        //////////////////////////////////////////// fin correo /////////////////////////////////////
+
+
+
+        res.status(200).json({ msg: "Compra exitosa", id_reservacion: id_reservacion, viajeTourId: viajeTourId, clienteExiste: clienteExiste, error: false });
 
     } catch (error) {
         console.log(error);
@@ -1041,6 +1124,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     // Datos para el template
                     const emailData = {
                         nombre: nombre_cliente,
+                        password: null,
                         fecha: fecha_ida_original,
                         horario: horaCompleta,
                         boletos: no_boletos,
