@@ -18,18 +18,52 @@ const db = require('../config/db')
 //////////////////////////////////////////
 app.get('/viaje-Tours', async (req, res) => {
     try {
-        let query = `SELECT v.id, v.id_reservacion, v.no_boletos, 
-                        pagado, fecha_compra, comision, status_traspaso, v.created_at, v.updated_at, v.cliente_id, v.viajeTour_id, v.total, v.checkin, v.tipos_boletos, v.correo,
-                        vt.fecha_ida, vt.fecha_regreso, vt.status, vt.tour_id, vt.guia_id, vt.geo_llegada, vt.geo_salida, vt.status_viaje,
-                        t.nombre AS nombreTour
-                        FROM venta 
-                        AS v
-                        INNER JOIN viajeTour
-                        AS vt
-                        ON v.viajeTour_id = vt.id
-                        INNER JOIN tour
-                        AS t
-                        ON vt.tour_id = t.id ORDER BY v.fecha_compra DESC`;
+        let query = `SELECT
+    COALESCE(t.nombre, 'Tour Desconocido') AS "nombre_del_tour",      
+    v.id_reservacion AS "id_reservacion",
+    v.nombre_cliente AS "nombre_visitante", 
+    v.correo AS correo,
+    v.no_boletos AS "no_boletos",
+    v.checkin AS checkin,
+        
+    COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(v.tipos_boletos, '$.tipoA')) AS UNSIGNED), 0) AS "total_tipo_A",
+    COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(v.tipos_boletos, '$.tipoB')) AS UNSIGNED), 0) AS "total_tipo_B",
+    COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(v.tipos_boletos, '$.tipoC')) AS UNSIGNED), 0) AS "total_tipo_C",
+    
+      
+    DATE_FORMAT(vt.fecha_ida, '%Y-%m-%d %H:%i:%s') AS "fecha_ida",
+    DATE_FORMAT(v.updated_at, '%Y-%m-%d %H:%i:%s')  AS "fecha_visita",
+    DATE_FORMAT(v.fecha_compra, '%Y-%m-%d %H:%i:%s') AS "fecha_compra",
+    
+
+        
+    v.total AS "total_de_compra",
+    
+    CASE
+        WHEN v.status_traspaso = 99 THEN 'No Aplica' 
+        WHEN v.session_id IS NULL THEN 'Efectivo'
+        ELSE 'Stripe'
+    END AS "tipo_compra",
+    
+    CASE
+        WHEN v.status_traspaso = 99 THEN 0.00      
+        WHEN v.session_id IS NULL THEN v.total
+        ELSE 0.00
+    END AS "cobrado_efectivo",
+    
+    CASE
+        WHEN v.status_traspaso = 99 THEN 0.00      
+        WHEN v.session_id IS NOT NULL THEN v.total
+        ELSE 0.00
+    END AS "cobrado_stripe"
+FROM
+    venta AS v
+LEFT JOIN 
+    viajeTour AS vt ON v.viajeTour_id = vt.id
+LEFT JOIN 
+    tour AS t ON vt.tour_id = t.id
+ORDER BY
+    v.fecha_compra DESC`;
         let tours = await db.pool.query(query);
 
         res.status(200).json(tours[0]);

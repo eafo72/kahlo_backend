@@ -171,6 +171,37 @@ router.post('/milesight-people-count', (req, res) => {
   }
 });
 
+// ============================================================================
+// 🧩 RUTA 3: Descargar Imagen (Forzar descarga)
+// GET /fotografias/descargar/:fileId
+// 🔒 Protegida: requiere token
+// ============================================================================
+router.get('/descargar/:fileId', auth, async (req, res) => {
+  if (!drive) return res.status(503).send('Servicio de Drive no disponible');
+  try {
+    const fileId = req.params.fileId;
+    if (!fileId) return res.status(400).send('fileId requerido');
+    console.log(`[DRIVE DOWNLOAD] Usuario: ${req.user.email || req.user.id} descargando File ID: ${fileId}`);
+    const meta = await drive.files.get({ fileId, fields: 'id,name,mimeType' });
+    const mimeType = meta.data.mimeType || 'application/octet-stream';
+    const fileName = meta.data.name || 'archivo';
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName.replace(/"/g, '')}"`);
+    const stream = await drive.files.get(
+      { fileId, alt: 'media' },
+      { responseType: 'stream' }
+    );
+    stream.data.on('error', err => {
+      console.error('Stream error (descargar):', err);
+      try { res.end(); } catch (e) {}
+    });
+    stream.data.pipe(res);
+  } catch (err) {
+    console.error('❌ Error en /descargar/:', err.message);
+    res.status(500).send('No se pudo descargar el archivo desde Drive');
+  }
+});
+
 // Exportamos el router y el objeto drive para que index.js pueda montar la ruta y el cron job.
 module.exports = {
     router: router,
