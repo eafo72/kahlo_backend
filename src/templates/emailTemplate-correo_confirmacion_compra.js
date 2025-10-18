@@ -119,7 +119,6 @@ module.exports = function generarEmail(data) {
                       <tr>
                         <td width="50%" align="left" style="padding: 10px 0; vertical-align: top; border-right: 1px solid #ffffff00;">
                           <p style="margin: 0; ${styleText(COLOR_NEUTRO, 'normal', '15px')} line-height: 1.3;">
-                            <img src="cid:locationIcon" alt="Ubicación" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 5px;">
                             <span style="font-weight: bold; color: ${COLOR_NEUTRO};">${data.direccion || 'Aguayo 54, Del Carmen, Coyoacán,'}</span>
                             <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;04100, CDMX
                           </p>
@@ -130,7 +129,6 @@ module.exports = function generarEmail(data) {
                         
                         <td width="50%" align="left" style="padding: 10px 0; vertical-align: top; padding-left: 20px;">
                           <p style="margin: 0; ${styleText(COLOR_NEUTRO, 'normal', '15px')} line-height: 1.3;">
-                            <img src="cid:calendarIcon" alt="Fecha" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 5px;">
                             <span style="font-weight: bold; color: ${COLOR_NEUTRO};">${data.fecha}</span>
                             <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${data.horario}
                           </p>
@@ -173,7 +171,7 @@ module.exports = function generarEmail(data) {
                       Si compraste un boleto con descuento, presenta una identificación vigente que lo compruebe al entrar.
                     </p>
                     <p style="${styleText()} margin-bottom: 15px;">
-                      Te recordamos que tu boleto digital es tu acceso al recorrido, queda estrictamente prohibido realizar copias del mismo. Consulta <a href="#" style="color: #1976d2; text-decoration: underline;">términos y condiciones del boleto digital</a>.
+                      Te recordamos que tu boleto digital es tu acceso al recorrido, queda estrictamente prohibido realizar copias del mismo. Consulta <a href="https://boleto.museocasakahlo.org/pages/terminos.html" target="_blank" style="color: #1976d2; text-decoration: underline;">términos y condiciones del boleto digital</a>.
                     </p>
                   </td>
                 </tr>
@@ -194,8 +192,8 @@ module.exports = function generarEmail(data) {
                     </p>
                     <p style="font-size: 12px; color: ${COLOR_NEUTRO}; margin: 0;">
                       <a href="#" style="color: #1976d2; text-decoration: underline; margin: 0 5px;">Contacto</a> | 
-                      <a href="#" style="color: #1976d2; text-decoration: underline; margin: 0 5px;">Términos y Condiciones</a> | 
-                      <a href="#" style="color: #1976d2; text-decoration: underline; margin: 0 5px;">Aviso de Privacidad</a>
+                      <a href="https://boleto.museocasakahlo.org/pages/terminos.html" target="_blank" style="color: #1976d2; text-decoration: underline; margin: 0 5px;">Términos y Condiciones</a> | 
+                      <a href="https://boleto.museocasakahlo.org/pages/aviso-privacidad.html" target="_blank" style="color: #1976d2; text-decoration: underline; margin: 0 5px;">Aviso de Privacidad</a>
                     </p>
                     <p style="font-size: 12px; color: #999; margin: 10px 0 0 0;">
                       ©Copyright 2025 Museo Casa Kahlo

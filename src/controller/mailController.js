@@ -30,6 +30,7 @@ let transporter = nodemailer.createTransport({
 });
 */
 
+
 let transporter = nodemailer.createTransport({
     host: process.env.MAILHOST,
     port: 587,
@@ -39,4 +40,6 @@ let transporter = nodemailer.createTransport({
         pass: process.env.PASSMAIL, // generated ethereal password
     }
 });
+
+
 module.exports = transporter;

@@ -833,7 +833,347 @@ app.post('/crear-admin', async (req, res) => {
         console.log(error);
         res.status(400).json({ error: true, details: error })
     }
+});
+
+app.post('/crear-admin-cortesia', async (req, res) => {
+    try {
+        let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
+
+        //caracterizticas del boleto de cortesia
+        pagado = 0;
+        status_traspaso = 99;
+        total = 0;
+
+        let nombre_completo = nombre_cliente + ' ' + apellidos_cliente;
+
+        let today = new Date().toLocaleString('es-MX', {
+            timeZone: 'America/Mexico_City',
+            hour12: false // formato 24 horas sin AM/PM
+        });
+        // Ejemplo: "29/09/2025, 23:42:08"
+        let [datePart, timePart] = today.split(', ');
+        let [day, month, year] = datePart.split('/');
+        let [hours, minutes, seconds] = timePart.split(':');
+        month = month.padStart(2, '0');
+        day = day.padStart(2, '0');
+        hours = hours.padStart(2, '0');
+        minutes = minutes.padStart(2, '0');
+        seconds = seconds.padStart(2, '0');
+        let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+        let seCreoRegistro = false;
+        let viajeTour = '';
+        let query = ``;
+
+        
+        //Verificamos si existe el correo en la DB
+        let clienteExiste = null;
+        let cliente_id = null;
+        let password = null;
+
+        query = `SELECT * FROM usuario WHERE correo='${correo}'`;
+
+        let existCorreo = await db.pool.query(query);
+
+        if (existCorreo[0].length >= 1) {
+            clienteExiste = true;
+            nombre_cliente = existCorreo[0][0].nombres;
+            apellidos_cliente = existCorreo[0][0].apellidos;
+            correo = existCorreo[0][0].correo;
+            nombre_completo = nombre_cliente + ' ' + apellidos_cliente;
+            cliente_id = existCorreo[0][0].id;
+        } else {
+            clienteExiste = false;
+            //generamos un password aleatorio
+            password = generarPassword();
+            const salt = await bcryptjs.genSalt(10);
+            const hashedPassword = await bcryptjs.hash(password, salt);
+
+            //damos de alta al cliente
+            query = `INSERT INTO usuario 
+                            (nombres, apellidos, correo, telefono, password, isClient, created_at, updated_at) 
+                            VALUES 
+                            ('${nombre_cliente}', '${apellidos_cliente}', '${correo}', '${telefono}', '${hashedPassword}', 1, '${fecha}', '${fecha}')`;
+
+
+            let newClient = await db.pool.query(query);
+            cliente_id = newClient[0].insertId;
+        }
+
+
+        //info tour para calcular fecha de regreso
+        query = `SELECT * FROM tour WHERE id = ${tourId} `;
+        let tour = await db.pool.query(query);
+        tour = tour[0][0];
+        let duracion = tour.duracion;
+        let max_pasajeros = tour.max_pasajeros;
+        //console.log(`Duracion: ${duracion}`);
+
+        if (!viajeTourId) {
+
+            try {
+                let hora = horaCompleta.split(':');
+
+                query = `SELECT 
+                        * 
+                        FROM viajeTour 
+                        WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCompleta}'
+                        AND tour_id = ${tourId};`;
+                let disponibilidad = await db.pool.query(query);
+                disponibilidad = disponibilidad[0];
+
+                if (hora.length < 3) {
+                    horaCompleta += ':00'
+                }
+                //formateo de fechaida
+                fecha_ida += ' ' + horaCompleta;
+                console.log(fecha_ida);
+
+
+                //formateo de fecha regreso
+                const newfecha = addMinutesToDate(new Date(fecha_ida), parseInt(duracion));
+                const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
+                console.log(fecha_regreso);
+
+                if (disponibilidad.length == 0) {
+                    query = `SELECT 
+                        * 
+                        FROM tour
+                        WHERE id = ${tourId}`;
+                    let result = await db.pool.query(query);
+
+                    if (result[0].length == 0) {
+                        return res.status(400).json({ msg: "Error en la busquda del tour por id", error: true, details: 'nungun registro encontrado' });
+                    }
+
+                    result = result[0][0];
+
+                    let guia = result.guias;
+                    guia = JSON.parse(guia);
+
+                    query = `INSERT INTO viajeTour 
+                        (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
+                        VALUES 
+                        ('${fecha_ida}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
+
+                    result = await db.pool.query(query);
+                    result = result[0];
+
+                    viajeTourId = result.insertId;
+                    seCreoRegistro = true;
+
+                } else {
+                    viajeTour = disponibilidad[0];
+                    viajeTourId = disponibilidad[0].id;
+                }
+
+            } catch (error) {
+                console.log(error);
+                return res.status(400).json({ msg: "Error en la creacion del registro viaje tour", error: true, details: error });
+            }
+
+        } else {
+            query = `SELECT 
+                        * 
+                        FROM viajeTour
+                        WHERE id = ${viajeTourId}`;
+            let result = await db.pool.query(query);
+            result = result[0];
+
+            if (result.length == 0) {
+                return res.status(400).json({ msg: "Error en la busquda del viaje tour por id", error: true, details: 'nungun registro encontrado' });
+            }
+            viajeTour = result[0];
+
+        }
+
+        let lugares_disp = 0;
+
+        if (seCreoRegistro) {
+            lugares_disp = max_pasajeros - no_boletos;
+        } else {
+            lugares_disp = viajeTour.lugares_disp - no_boletos;
+        }
+        if (lugares_disp < 0) {
+            return res.status(400).json({ msg: "El numero de boletos excede los lugares disponibles", error: true, details: `Lugares disponibles: ${viajeTour.lugares_disp}` });
+        }
+
+        query = `INSERT INTO venta 
+                        (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id) 
+                        VALUES 
+                        ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '${pagado}', '${fecha}', '0.0', '${status_traspaso}', '${fecha_ida}', '${fecha}', '${fecha}', '${nombre_completo}', '${cliente_id}', '${correo}', '${viajeTourId}')`;
+
+        let result = await db.pool.query(query);
+        result = result[0];
+
+        query = `SELECT 
+                        * 
+                        FROM usuario
+                        WHERE id = ${cliente_id}`;
+        let client = await db.pool.query(query);
+
+        client = client[0];
+
+        if (client.length == 0) {
+            return res.status(400).json({ msg: "Error en la busquda de los datos del cliente", error: true, details: 'nungun registro encontrado' });
+        }
+        client = client[0];
+
+        let id_reservacion = result.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
+
+        //creamos el QR
+        const qrCodeBuffer = await generateQRCode(id_reservacion);
+
+        query = `UPDATE viajeTour SET
+                    lugares_disp = '${lugares_disp}'
+                    WHERE id     = ${viajeTourId}`;
+
+        await db.pool.query(query);
+
+        query = `UPDATE venta SET
+                    id_reservacion = '${id_reservacion}'
+                    WHERE id       = ${result.insertId}`;
+
+        await db.pool.query(query);
+
+
+        ////////////////////////////////// preparacion de correo//////////////////////////////////
+        // Crear la tabla de boletos
+        let tiposBoletos = {};
+
+        try {
+            tiposBoletos = JSON.parse(tipos_boletos);
+
+            if (typeof tiposBoletos !== 'object' || tiposBoletos === null || Array.isArray(tiposBoletos)) {
+                console.error('tipos_boletos no es un objeto válido:', tiposBoletos);
+                tiposBoletos = { "General": no_boletos };
+            }
+        } catch (error) {
+            console.error('Error parseando tipos_boletos:', error);
+            tiposBoletos = { "General": no_boletos };
+        }
+
+        // 
+        const precios = {
+            tipoA: 270,
+            tipoB: 130,
+            tipoC: 65
+        };
+
+        // 
+        const nombres = {
+            tipoA: "Entrada General",
+            tipoB: "Ciudadano Mexicano",
+            tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
+        };
+
+        // 
+        let tiposBoletosArray = Object.entries(tiposBoletos).map(([tipo, cantidad]) => {
+            return {
+                nombre: nombres[tipo] || tipo,   // usa nombre bonito si existe
+                precio: precios[tipo] || 0,
+                cantidad
+            };
+        });
+
+        // 
+        let tablaBoletos = `
+  <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
+    <tr style="background-color:#f5f5f5">
+      <th style="text-align:left">Tipo de boleto</th>
+      <th style="text-align:right">Precio</th>
+      <th style="text-align:center">Cantidad</th>
+      <th style="text-align:right">Subtotal</th>
+    </tr>
+`;
+
+
+
+        tiposBoletosArray.forEach(tipo => {
+            let subtotal = Number(tipo.precio) * Number(tipo.cantidad);
+
+
+            tablaBoletos += `
+    <tr>
+      <td style="text-align:left">${tipo.nombre}</td>
+      <td style="text-align:right">$${Number(tipo.precio).toFixed(2)}</td>
+      <td style="text-align:center">${Number(tipo.cantidad)}</td>
+      <td style="text-align:right">$${Number(subtotal).toFixed(2)}</td>
+    </tr>
+  `;
+        });
+
+        tablaBoletos += `
+  <tr>
+    <td colspan="2"></td>
+    <td style="text-align:center; font-weight:bold">Total</td>
+    <td style="text-align:right; font-weight:bold">$${Number(total).toFixed(2)}</td>
+  </tr>
+</table>`;
+
+
+
+        // Datos para el template
+        const emailData = {
+            nombre: nombre_cliente,
+            password: password,
+            fecha: fecha_ida,
+            horario: horaCompleta,
+            boletos: no_boletos,
+            tablaBoletos: tablaBoletos,
+            idReservacion: id_reservacion,
+            total: total,
+            ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+        };
+
+        // Enviar el correo al admin y al cliente
+        const emailHtml = emailTemplate(emailData);
+
+        let message = {
+            from: process.env.MAIL,
+            to: process.env.MAIL,
+            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            text: "",
+            html: emailHtml,
+            attachments: [{
+                filename: 'qr.png',
+                content: qrCodeBuffer,
+                cid: 'qrImage'
+            }]
+        }
+
+        const info = await mailer.sendMail(message);
+        console.log('Email enviado al admin:', info);
+
+        message = {
+            from: process.env.MAIL,
+            to: correo,
+            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            text: "",
+            html: emailHtml,
+            attachments: [{
+                filename: 'qr.png',
+                content: qrCodeBuffer,
+                cid: 'qrImage'
+            }]
+        }
+
+        const info2 = await mailer.sendMail(message);
+        console.log('Email enviado al cliente:', info2);
+
+        //////////////////////////////////////////// fin correo /////////////////////////////////////
+
+
+
+        res.status(200).json({ msg: "Compra exitosa", id_reservacion: id_reservacion, viajeTourId: viajeTourId, clienteExiste: clienteExiste, error: false });
+
+    } catch (error) {
+        console.log(error);
+        res.status(400).json({ error: true, details: error })
+    }
 })
+
 
 app.post('/stripe/create-checkout-session', async (req, res) => {
     try {
