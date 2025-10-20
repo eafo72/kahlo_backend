@@ -166,16 +166,16 @@ app.get('/historial/:id', async (req, res) => {
         if (tour[0].length != 0) {
 
             for (let i = 0; i < tour[0].length; i++) {
-                
+
                 let query = `SELECT *
                                 FROM comentario
                                 WHERE viajeTour_id=${tour[0][i].viajeTour_id}
                                 AND cliente_id=${clienteId}`;
                 let comentario = await db.pool.query(query);
-                
-                if(comentario[0].length != 0){
+
+                if (comentario[0].length != 0) {
                     tour[0][i].comentado = true;
-                }else{
+                } else {
                     tour[0][i].comentado = false;
                 }
             }
@@ -203,7 +203,7 @@ app.get('/historialGuia/:id', async (req, res) => {
                         WHERE vt.guia_id=${guiaId} ORDER BY vt.fecha_ida ASC`;
         let tour = await db.pool.query(query);
 
-        
+
         res.status(200).json(tour[0]);
 
     } catch (error) {
@@ -217,7 +217,7 @@ app.get('/toursHoy/:id', async (req, res) => {
     try {
         let guiaId = req.params.id;
 
-              
+
         query = `SELECT vt.id AS viajeTour_id, vt.fecha_ida, vt.fecha_regreso, vt.status, vt.tour_id, vt.guia_id, vt.geo_llegada, vt.geo_salida, vt.status_viaje,
                         t.nombre AS nombreTour
                         FROM viajeTour
@@ -228,7 +228,7 @@ app.get('/toursHoy/:id', async (req, res) => {
                         WHERE vt.guia_id=${guiaId} AND DATE(vt.fecha_ida) = DATE(now()) AND vt.status_viaje !="realizado"`;
         let tour = await db.pool.query(query);
 
-        
+
         res.status(200).json(tour[0]);
 
     } catch (error) {
@@ -272,29 +272,58 @@ app.get('/historialByEmpresa/:emId/admin/:adId', async (req, res) => {
         let empresaId = req.params.emId;
         let adminId = req.params.adId;
 
-        let query = `SELECT u.nombres AS nombreUsuario, u.apellidos AS apellidoUsuario, u.correo AS correoUsuario, v.id, v.id_reservacion, v.no_boletos, v.tipos_boletos, v.correo,
-                        pagado, fecha_compra, comision, status_traspaso, v.created_at, v.updated_at, v.cliente_id, v.viajeTour_id, v.total, v.checkin,
-                        vt.fecha_ida, vt.fecha_regreso, vt.status, vt.tour_id, vt.guia_id, vt.geo_llegada, vt.geo_salida, vt.status_viaje,
-                        t.nombre AS nombreTour, t.empresa_id, e.nombre AS nombreEmpresa, ad.id
-                        FROM venta 
-                        AS v
-                        INNER JOIN usuario
-                        AS u
-                        ON v.cliente_id = u.id 
-                        INNER JOIN viajeTour
-                        AS vt
-                        ON v.viajeTour_id = vt.id
-                        INNER JOIN tour
-                        AS t
-                        ON vt.tour_id = t.id
-                        INNER JOIN empresa
-                        AS e
-                        ON t.empresa_id = e.id
-                        INNER JOIN usuario
-                        AS ad
-                        ON ad.empresa_id = e.id 
-                        WHERE t.empresa_id=${empresaId}
-                        AND ad.id=${adminId} ORDER BY vt.fecha_ida ASC`;
+        let query = `SELECT
+    COALESCE(t.nombre, 'Tour Desconocido') AS "nombre_del_tour",      
+    v.id_reservacion AS "id_reservacion",
+    v.nombre_cliente AS "nombre_visitante", 
+    v.correo AS correo,
+    v.no_boletos AS "no_boletos",
+    v.checkin AS checkin,
+        
+    COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(v.tipos_boletos, '$.tipoA')) AS UNSIGNED), 0) AS "total_tipo_A",
+    COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(v.tipos_boletos, '$.tipoB')) AS UNSIGNED), 0) AS "total_tipo_B",
+    COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(v.tipos_boletos, '$.tipoC')) AS UNSIGNED), 0) AS "total_tipo_C",
+    
+      
+    DATE_FORMAT(vt.fecha_ida, '%Y-%m-%d %H:%i:%s') AS "fecha_ida",
+    DATE_FORMAT(v.updated_at, '%Y-%m-%d %H:%i:%s')  AS "fecha_visita",
+    DATE_FORMAT(v.fecha_compra, '%Y-%m-%d %H:%i:%s') AS "fecha_compra",
+    
+
+        
+    v.total AS "total_de_compra",
+    
+    CASE
+        WHEN v.status_traspaso = 99 THEN 'No Aplica' 
+        WHEN v.session_id IS NULL THEN 'Efectivo'
+        ELSE 'Stripe'
+    END AS "tipo_compra",
+    
+    CASE
+        WHEN v.status_traspaso = 99 THEN 0.00      
+        WHEN v.session_id IS NULL THEN v.total
+        ELSE 0.00
+    END AS "cobrado_efectivo",
+    
+    CASE
+        WHEN v.status_traspaso = 99 THEN 0.00      
+        WHEN v.session_id IS NOT NULL THEN v.total
+        ELSE 0.00
+    END AS "cobrado_stripe"
+FROM
+    venta AS v
+LEFT JOIN 
+    viajeTour AS vt ON v.viajeTour_id = vt.id
+LEFT JOIN 
+    tour AS t ON vt.tour_id = t.id
+INNER JOIN 
+    empresa AS e ON t.empresa_id = e.id
+INNER JOIN
+    usuario AS ad ON ad.empresa_id = e.id     
+WHERE 
+    t.empresa_id=${empresaId} AND ad.id=${adminId} 
+ORDER BY
+    v.fecha_compra DESC`;
 
         let tour = await db.pool.query(query);
 
@@ -422,14 +451,14 @@ app.put('/set', async (req, res) => {
 //set realizado a viajeTour por id
 app.put('/setRealizado', async (req, res) => {
     try {
-        let  idvt = req.body.id;
+        let idvt = req.body.id;
 
         let errors = Array();
 
         if (!idvt) {
             errors.push({ msg: "El campo id debe de contener un valor valido" });
         }
-        
+
 
         if (errors.length >= 1) {
 
@@ -464,14 +493,14 @@ app.put('/setRealizado', async (req, res) => {
 //set en curso a viajeTour por id
 app.put('/setEnCurso', async (req, res) => {
     try {
-        let  idvt = req.body.id;
+        let idvt = req.body.id;
 
         let errors = Array();
 
         if (!idvt) {
             errors.push({ msg: "El campo id debe de contener un valor valido" });
         }
-        
+
 
         if (errors.length >= 1) {
 
@@ -519,7 +548,7 @@ app.post('/actualizaHistorial', async (req, res) => {
         if (!opcion) {
             errors.push({ msg: "El campo opcion debe de contener un valor" });
         }
-        
+
 
         if (errors.length >= 1) {
 
@@ -536,7 +565,7 @@ app.post('/actualizaHistorial', async (req, res) => {
         let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
         let fecha = date + ' ' + time;
 
-        if(opcion == 'Agregar'){
+        if (opcion == 'Agregar') {
             let query = `UPDATE venta SET
                         cliente_id    = '${id_cliente}',
                         updated_at    = '${fecha}' 
@@ -548,7 +577,7 @@ app.post('/actualizaHistorial', async (req, res) => {
             res.status(200).json({ error: false, msg: "Registro actualizado con exito" })
         }
 
-        if(opcion == 'Omitir'){
+        if (opcion == 'Omitir') {
             let query = `UPDATE venta SET
                         correo  = CONCAT(correo, '_OMITIR'),
                         updated_at    = '${fecha}' 
