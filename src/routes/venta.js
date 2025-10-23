@@ -54,6 +54,37 @@ async function generateQRCode(text) {
     }
 }
 
+// Función para normalizar la hora a formato 24h
+const normalizarHora = (horaStr) => {
+    // Si ya está en formato 24h (ej: '13:30' o '09:00')
+    if (/^([01]?[0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$/.test(horaStr)) {
+        const [h, m, s = '00'] = horaStr.split(':');
+        return `${h.padStart(2, '0')}:${m.padStart(2, '0')}:${s.padStart(2, '0')}`;
+    }
+
+    // Si está en formato 12h (ej: '1:30 PM' o '9:00 AM')
+    const match = horaStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+    if (match) {
+        let [_, h, m, period] = match;
+        h = parseInt(h, 10);
+        m = m.padStart(2, '0');
+
+        if (period) {
+            period = period.toUpperCase();
+            if (period === 'PM' && h < 12) h += 12;
+            if (period === 'AM' && h === 12) h = 0;
+        }
+
+        return `${h.toString().padStart(2, '0')}:${m}:00`;
+    }
+
+    // Si no coincide con ningún formato conocido, devolver la hora original con segundos
+    console.warn('Formato de hora no reconocido, usando valor original:', horaStr);
+    return horaStr.includes(':') ?
+        `${horaStr.split(':').slice(0, 2).join(':')}:00` :
+        '00:00:00';
+};
+
 //////////////////////////////////////////
 //                Venta                 //
 //////////////////////////////////////////
@@ -526,7 +557,7 @@ app.post('/crear-admin', async (req, res) => {
         let viajeTour = '';
         let query = ``;
 
-        
+
         //Verificamos si existe el correo en la DB
         let clienteExiste = null;
         let cliente_id = null;
@@ -865,7 +896,7 @@ app.post('/crear-admin-cortesia', async (req, res) => {
         let viajeTour = '';
         let query = ``;
 
-        
+
         //Verificamos si existe el correo en la DB
         let clienteExiste = null;
         let cliente_id = null;
@@ -1249,7 +1280,8 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                 try {
                     const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = session.metadata;
                     let fecha_ida_original = session.metadata.fecha_ida; // Variable separada para evitar conflictos
-                    let horaCompleta = session.metadata.horaCompleta; // Variable separada para poder modificarla
+                    let horaCompleta = normalizarHora(session.metadata.horaCompleta); // Variable separada para poder modificarla
+                    console.log('Hora normalizada:', { original: session.metadata.horaCompleta, normalizada: horaCompleta });
 
                     let today = new Date().toLocaleString('es-MX', {
                         timeZone: 'America/Mexico_City',
@@ -1278,11 +1310,9 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     let duracion = tour.duracion;
                     let max_pasajeros = tour.max_pasajeros;
 
-                    let hora = horaCompleta.split(':');
-                    if (hora.length < 3) {
-                        horaCompleta += ':00'
-                    }
-                    let fecha_ida_formateada = fecha_ida_original + ' ' + horaCompleta;
+                                        
+                    const fecha_ida_formateada = `${fecha_ida_original} ${horaCompleta}`;
+                    
 
                     try {
 
@@ -2192,220 +2222,220 @@ app.post('/verificar-reserva', auth, async (req, res) => {
 
 app.get('/modificar-check', auth, async (req, res) => {
 
-  const MAX_CUPOS = 12;
-  const id_reservacion = req.query.reserva;
-  const nueva_fecha_ida = req.query.fecha;
-  const nueva_hora_salida = req.query.hora;
-  
-  if (!id_reservacion || !nueva_fecha_ida || !nueva_hora_salida) {
-    return res.status(400).json({ msg: 'Faltan parámetros: reserva, fecha y hora.', error: true });
-  }
-  try {
-    const nueva_fecha_hora = `${nueva_fecha_ida} ${nueva_hora_salida}`;
-    const fechaActual = new Date();
-    console.log('🕒 Fecha actual:', fechaActual);
-    console.log('🔹 Parámetros recibidos:', { id_reservacion, nueva_fecha_hora });
-    // 1️⃣ Obtener venta
-    let [ventaResult] = await db.pool.query(
-      `SELECT no_boletos, viajeTour_id, checkin FROM venta WHERE id_reservacion = ?`,
-      [id_reservacion]
-    );
-    if (ventaResult.length === 0) {
-      console.log('❌ Venta no encontrada');
-      return res.status(404).json({ msg: 'ID de reservación no encontrado.', error: true });
+    const MAX_CUPOS = 12;
+    const id_reservacion = req.query.reserva;
+    const nueva_fecha_ida = req.query.fecha;
+    const nueva_hora_salida = req.query.hora;
+
+    if (!id_reservacion || !nueva_fecha_ida || !nueva_hora_salida) {
+        return res.status(400).json({ msg: 'Faltan parámetros: reserva, fecha y hora.', error: true });
     }
-    const no_boletos = ventaResult[0].no_boletos;
-    const viejo_viajeTour_id = ventaResult[0].viajeTour_id;
-    const checkin_status = ventaResult[0].checkin;
-    console.log('🧾 Datos de venta:', { no_boletos, viejo_viajeTour_id, checkin_status });
-    // 2️⃣ Obtener viaje origen
-    let [viajeOrigen] = await db.pool.query(
-      `SELECT id, lugares_disp, fecha_ida, tour_id, guia_id FROM viajeTour WHERE id = ?`,
-      [viejo_viajeTour_id]
-    );
-    if (viajeOrigen.length === 0) {
-      console.log('❌ Viaje original no encontrado');
-      return res.status(404).json({ msg: 'Viaje original no encontrado.', error: true });
+    try {
+        const nueva_fecha_hora = `${nueva_fecha_ida} ${nueva_hora_salida}`;
+        const fechaActual = new Date();
+        console.log('🕒 Fecha actual:', fechaActual);
+        console.log('🔹 Parámetros recibidos:', { id_reservacion, nueva_fecha_hora });
+        // 1️⃣ Obtener venta
+        let [ventaResult] = await db.pool.query(
+            `SELECT no_boletos, viajeTour_id, checkin FROM venta WHERE id_reservacion = ?`,
+            [id_reservacion]
+        );
+        if (ventaResult.length === 0) {
+            console.log('❌ Venta no encontrada');
+            return res.status(404).json({ msg: 'ID de reservación no encontrado.', error: true });
+        }
+        const no_boletos = ventaResult[0].no_boletos;
+        const viejo_viajeTour_id = ventaResult[0].viajeTour_id;
+        const checkin_status = ventaResult[0].checkin;
+        console.log('🧾 Datos de venta:', { no_boletos, viejo_viajeTour_id, checkin_status });
+        // 2️⃣ Obtener viaje origen
+        let [viajeOrigen] = await db.pool.query(
+            `SELECT id, lugares_disp, fecha_ida, tour_id, guia_id FROM viajeTour WHERE id = ?`,
+            [viejo_viajeTour_id]
+        );
+        if (viajeOrigen.length === 0) {
+            console.log('❌ Viaje original no encontrado');
+            return res.status(404).json({ msg: 'Viaje original no encontrado.', error: true });
+        }
+        const lugares_disp_origen = viajeOrigen[0].lugares_disp;
+        const viejaFechaIda = viajeOrigen[0].fecha_ida;
+        console.log('🚌 Viaje origen:', { lugares_disp_origen, viejaFechaIda });
+        // 3️⃣ Validaciones básicas
+        let esPosible = true;
+        let msgFallo = 'VIABLE';
+        const nuevaFechaHoraObj = new Date(nueva_fecha_hora);
+        const viejaFechaObj = new Date(viejaFechaIda);
+        if (checkin_status != 0) {
+            esPosible = false;
+            msgFallo = 'FALLO: Reserva ya utilizada (check-in realizado).';
+        } else if (viejaFechaObj < fechaActual) {
+            esPosible = false;
+            msgFallo = 'FALLO: Fecha/hora del viaje original ya pasó.';
+        } else if (nuevaFechaHoraObj < fechaActual) {
+            esPosible = false;
+            msgFallo = 'FALLO: Fecha/hora destino ya pasó o es hora actual.';
+        }
+        console.log('✅ Validaciones básicas:', { esPosible, msgFallo });
+        // 4️⃣ Buscar viaje destino
+        let [buscarDestino] = await db.pool.query(
+            `SELECT id, lugares_disp FROM viajeTour WHERE fecha_ida = ?`,
+            [nueva_fecha_hora]
+        );
+        let viajeDestinoExistente = false;
+        let viajeDestinoId = null;
+        let cupoDestinoDespues = MAX_CUPOS;
+        if (buscarDestino.length > 0) {
+            viajeDestinoExistente = true;
+            viajeDestinoId = buscarDestino[0].id;
+            cupoDestinoDespues = buscarDestino[0].lugares_disp - no_boletos;
+            if (cupoDestinoDespues < 0) {
+                esPosible = false;
+                msgFallo = `FALLO: Cupo insuficiente en viaje existente.`;
+            }
+        } else {
+            cupoDestinoDespues = MAX_CUPOS - no_boletos;
+            if (cupoDestinoDespues < 0) {
+                esPosible = false;
+                msgFallo = 'FALLO: La reserva excede cupo máximo para viaje nuevo.';
+            }
+        }
+        console.log('🚦 Viaje destino:', { viajeDestinoExistente, viajeDestinoId, cupoDestinoDespues });
+        // 5️⃣ Preparar respuesta
+        const response = {
+            error: false,
+            es_posible_traspaso: esPosible,
+            msg: esPosible ? 'Traspaso viable' : msgFallo,
+            datos_para_horario: {
+                id_reservacion,
+                no_boletos,
+                viejo_viajeTour_id,
+                checkin_status,
+                nueva_fecha_hora,
+                viajeDestinoExistente,
+                viajeDestinoId,
+                tour_id: viajeOrigen[0].tour_id,
+                guia_id: viajeOrigen[0].guia_id
+            },
+            inventario: {
+                origen_lugares_disp: lugares_disp_origen,
+                destino_cupo_despues: cupoDestinoDespues
+            }
+        };
+        // 🔹 Log de la respuesta completa
+        console.log('📝 /modificar-test Response:', JSON.stringify(response, null, 2));
+        // 6️⃣ Enviar respuesta al cliente
+        res.status(200).json(response);
+    } catch (error) {
+        console.error('Error en /modificar-test:', error);
+        res.status(500).json({ msg: 'Error interno', error: true, details: error.message });
     }
-    const lugares_disp_origen = viajeOrigen[0].lugares_disp;
-    const viejaFechaIda = viajeOrigen[0].fecha_ida;
-    console.log('🚌 Viaje origen:', { lugares_disp_origen, viejaFechaIda });
-    // 3️⃣ Validaciones básicas
-    let esPosible = true;
-    let msgFallo = 'VIABLE';
-    const nuevaFechaHoraObj = new Date(nueva_fecha_hora);
-    const viejaFechaObj = new Date(viejaFechaIda);
-    if (checkin_status != 0) {
-      esPosible = false;
-      msgFallo = 'FALLO: Reserva ya utilizada (check-in realizado).';
-    } else if (viejaFechaObj < fechaActual) {
-      esPosible = false;
-      msgFallo = 'FALLO: Fecha/hora del viaje original ya pasó.';
-    } else if (nuevaFechaHoraObj < fechaActual) {
-      esPosible = false;
-      msgFallo = 'FALLO: Fecha/hora destino ya pasó o es hora actual.';
-    }
-    console.log('✅ Validaciones básicas:', { esPosible, msgFallo });
-    // 4️⃣ Buscar viaje destino
-    let [buscarDestino] = await db.pool.query(
-      `SELECT id, lugares_disp FROM viajeTour WHERE fecha_ida = ?`,
-      [nueva_fecha_hora]
-    );
-    let viajeDestinoExistente = false;
-    let viajeDestinoId = null;
-    let cupoDestinoDespues = MAX_CUPOS;
-    if (buscarDestino.length > 0) {
-      viajeDestinoExistente = true;
-      viajeDestinoId = buscarDestino[0].id;
-      cupoDestinoDespues = buscarDestino[0].lugares_disp - no_boletos;
-      if (cupoDestinoDespues < 0) {
-        esPosible = false;
-        msgFallo = `FALLO: Cupo insuficiente en viaje existente.`;
-      }
-    } else {
-      cupoDestinoDespues = MAX_CUPOS - no_boletos;
-      if (cupoDestinoDespues < 0) {
-        esPosible = false;
-        msgFallo = 'FALLO: La reserva excede cupo máximo para viaje nuevo.';
-      }
-    }
-    console.log('🚦 Viaje destino:', { viajeDestinoExistente, viajeDestinoId, cupoDestinoDespues });
-    // 5️⃣ Preparar respuesta
-    const response = {
-      error: false,
-      es_posible_traspaso: esPosible,
-      msg: esPosible ? 'Traspaso viable' : msgFallo,
-      datos_para_horario: {
-        id_reservacion,
-        no_boletos,
-        viejo_viajeTour_id,
-        checkin_status,
-        nueva_fecha_hora,
-        viajeDestinoExistente,
-        viajeDestinoId,
-        tour_id:viajeOrigen[0].tour_id,
-        guia_id:viajeOrigen[0].guia_id
-      },
-      inventario: {
-        origen_lugares_disp: lugares_disp_origen,
-        destino_cupo_despues: cupoDestinoDespues
-      }
-    };
-    // 🔹 Log de la respuesta completa
-    console.log('📝 /modificar-test Response:', JSON.stringify(response, null, 2));
-    // 6️⃣ Enviar respuesta al cliente
-    res.status(200).json(response);
-  } catch (error) {
-    console.error('Error en /modificar-test:', error);
-    res.status(500).json({ msg: 'Error interno', error: true, details: error.message });
-  }
 });
 
 app.post('/modificar-horario', auth, async (req, res) => {
-  const MAX_CUPOS = 12;
-  try {
-    const {
-      id_reservacion,
-      no_boletos,
-      viejo_viajeTour_id,
-      checkin_status,
-      nueva_fecha_hora,
-      viajeDestinoExistente,
-      viajeDestinoId,
-      tour_id,
-      guia_id
-    } = req.body.datos_para_horario; // directamente desde /modificar-test
-    if (!id_reservacion || !nueva_fecha_hora || !no_boletos || !viejo_viajeTour_id) {
-      return res.status(400).json({ msg: 'Faltan parámetros obligatorios.', error: true });
-    }
-    if (checkin_status != 0) {
-      return res.status(400).json({ msg: 'Reserva ya utilizada (check-in realizado).', error: true });
-    }
-    // -------------------------------------------------------------
-    // 1️⃣ Iniciar transacción
-    // -------------------------------------------------------------
-    const connection = await db.pool.getConnection();
-    await connection.beginTransaction();
+    const MAX_CUPOS = 12;
     try {
-      let destinoIdFinal = viajeDestinoId;
-      // -------------------------------------------------------------
-      // 2️⃣ Crear viaje si no existe
-      // -------------------------------------------------------------
-      if (!viajeDestinoExistente) {
-        
-        //info tour para calcular fecha de regreso
-        query = `SELECT * FROM tour WHERE id = ${tour_id} `;
-        let tour = await db.pool.query(query);
-        tour = tour[0][0];
-        let duracion = tour.duracion;
-        //formateo de fecha regreso
-        const newfecha = addMinutesToDate(new Date(nueva_fecha_hora), parseInt(duracion));
-        const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
+        const {
+            id_reservacion,
+            no_boletos,
+            viejo_viajeTour_id,
+            checkin_status,
+            nueva_fecha_hora,
+            viajeDestinoExistente,
+            viajeDestinoId,
+            tour_id,
+            guia_id
+        } = req.body.datos_para_horario; // directamente desde /modificar-test
+        if (!id_reservacion || !nueva_fecha_hora || !no_boletos || !viejo_viajeTour_id) {
+            return res.status(400).json({ msg: 'Faltan parámetros obligatorios.', error: true });
+        }
+        if (checkin_status != 0) {
+            return res.status(400).json({ msg: 'Reserva ya utilizada (check-in realizado).', error: true });
+        }
+        // -------------------------------------------------------------
+        // 1️⃣ Iniciar transacción
+        // -------------------------------------------------------------
+        const connection = await db.pool.getConnection();
+        await connection.beginTransaction();
+        try {
+            let destinoIdFinal = viajeDestinoId;
+            // -------------------------------------------------------------
+            // 2️⃣ Crear viaje si no existe
+            // -------------------------------------------------------------
+            if (!viajeDestinoExistente) {
+
+                //info tour para calcular fecha de regreso
+                query = `SELECT * FROM tour WHERE id = ${tour_id} `;
+                let tour = await db.pool.query(query);
+                tour = tour[0][0];
+                let duracion = tour.duracion;
+                //formateo de fecha regreso
+                const newfecha = addMinutesToDate(new Date(nueva_fecha_hora), parseInt(duracion));
+                const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
 
 
-        const crearQuery = `
+                const crearQuery = `
           INSERT INTO viajeTour (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, status_viaje)
           VALUES (?, ?, ?, NOW(), NOW(), ?, ?, 'proximo')
         `;
-        const [crearResult] = await connection.query(crearQuery, [nueva_fecha_hora, fecha_regreso, MAX_CUPOS - no_boletos, tour_id, guia_id]);
-        destinoIdFinal = crearResult.insertId;
-        console.log('✅ Nuevo viaje creado:', destinoIdFinal);
-      } else {
-        // -------------------------------------------------------------
-        // 3️⃣ Si existe, descontar inventario
-        // -------------------------------------------------------------
-        const descontarQuery = `
+                const [crearResult] = await connection.query(crearQuery, [nueva_fecha_hora, fecha_regreso, MAX_CUPOS - no_boletos, tour_id, guia_id]);
+                destinoIdFinal = crearResult.insertId;
+                console.log('✅ Nuevo viaje creado:', destinoIdFinal);
+            } else {
+                // -------------------------------------------------------------
+                // 3️⃣ Si existe, descontar inventario
+                // -------------------------------------------------------------
+                const descontarQuery = `
           UPDATE viajeTour
           SET lugares_disp = lugares_disp - ?
           WHERE id = ?
         `;
-        await connection.query(descontarQuery, [no_boletos, destinoIdFinal]);
-        console.log('✅ Cupos descontados en viaje existente:', destinoIdFinal);
-      }
-      // -------------------------------------------------------------
-      // 4️⃣ Revertir inventario del viaje origen
-      // -------------------------------------------------------------
-      const revertirQuery = `
+                await connection.query(descontarQuery, [no_boletos, destinoIdFinal]);
+                console.log('✅ Cupos descontados en viaje existente:', destinoIdFinal);
+            }
+            // -------------------------------------------------------------
+            // 4️⃣ Revertir inventario del viaje origen
+            // -------------------------------------------------------------
+            const revertirQuery = `
         UPDATE viajeTour
         SET lugares_disp = LEAST(lugares_disp + ?, ?)
         WHERE id = ?
       `;
-      await connection.query(revertirQuery, [no_boletos, MAX_CUPOS, viejo_viajeTour_id]);
-      console.log('🔄 Cupos revertidos en viaje origen:', viejo_viajeTour_id);
-      // -------------------------------------------------------------
-      // 5️⃣ Actualizar venta
-      // -------------------------------------------------------------
-      const actualizarVentaQuery = `
+            await connection.query(revertirQuery, [no_boletos, MAX_CUPOS, viejo_viajeTour_id]);
+            console.log('🔄 Cupos revertidos en viaje origen:', viejo_viajeTour_id);
+            // -------------------------------------------------------------
+            // 5️⃣ Actualizar venta
+            // -------------------------------------------------------------
+            const actualizarVentaQuery = `
         UPDATE venta
         SET viajeTour_id = ?, fecha_comprada = ?, updated_at = NOW()
         WHERE id_reservacion = ?
       `;
-      await connection.query(actualizarVentaQuery, [destinoIdFinal, nueva_fecha_hora, id_reservacion]);
-      console.log('✏️ Venta actualizada:', id_reservacion, '→', destinoIdFinal);
-      // -------------------------------------------------------------
-      // 6️⃣ Finalizar transacción
-      // -------------------------------------------------------------
-      await connection.commit();
-      connection.release();
-      res.status(200).json({
-        error: false,
-        msg: `Reserva ${id_reservacion} traspasada con éxito.`,
-        detalles: {
-          viaje_origen_id: viejo_viajeTour_id,
-          viaje_destino_id: destinoIdFinal,
-          boletos_movidos: no_boletos,
-          accion: viajeDestinoExistente ? 'Traspasado a viaje existente' : 'Viaje creado y traspasado'
+            await connection.query(actualizarVentaQuery, [destinoIdFinal, nueva_fecha_hora, id_reservacion]);
+            console.log('✏️ Venta actualizada:', id_reservacion, '→', destinoIdFinal);
+            // -------------------------------------------------------------
+            // 6️⃣ Finalizar transacción
+            // -------------------------------------------------------------
+            await connection.commit();
+            connection.release();
+            res.status(200).json({
+                error: false,
+                msg: `Reserva ${id_reservacion} traspasada con éxito.`,
+                detalles: {
+                    viaje_origen_id: viejo_viajeTour_id,
+                    viaje_destino_id: destinoIdFinal,
+                    boletos_movidos: no_boletos,
+                    accion: viajeDestinoExistente ? 'Traspasado a viaje existente' : 'Viaje creado y traspasado'
+                }
+            });
+        } catch (transactionError) {
+            await connection.rollback();
+            connection.release();
+            throw transactionError;
         }
-      });
-    } catch (transactionError) {
-      await connection.rollback();
-      connection.release();
-      throw transactionError;
+    } catch (error) {
+        console.error('Error en /modificar-horario:', error);
+        res.status(500).json({ msg: 'Error interno', error: true, details: error.message });
     }
-  } catch (error) {
-    console.error('Error en /modificar-horario:', error);
-    res.status(500).json({ msg: 'Error interno', error: true, details: error.message });
-  }
 });
 
 module.exports = app
