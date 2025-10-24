@@ -56,16 +56,20 @@ async function generateQRCode(text) {
 
 // Función para normalizar la hora a formato 24h
 const normalizarHora = (horaStr) => {
-    // Si ya está en formato 24h (ej: '13:30' o '09:00')
-    if (/^([01]?[0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$/.test(horaStr)) {
+    if (!horaStr || typeof horaStr !== 'string') return '00:00:00';
+
+    horaStr = horaStr.trim();
+
+    // Caso 1: formato 24h estándar (ej: '13:30', '09:00', '23:15:45')
+    if (/^([01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(horaStr)) {
         const [h, m, s = '00'] = horaStr.split(':');
         return `${h.padStart(2, '0')}:${m.padStart(2, '0')}:${s.padStart(2, '0')}`;
     }
 
-    // Si está en formato 12h (ej: '1:30 PM' o '9:00 AM')
-    const match = horaStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
-    if (match) {
-        let [_, h, m, period] = match;
+    // Caso 2: formato 12h (ej: '1:30 PM' o '9:00 AM')
+    const match12 = horaStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+    if (match12) {
+        let [_, h, m, period] = match12;
         h = parseInt(h, 10);
         m = m.padStart(2, '0');
 
@@ -78,12 +82,22 @@ const normalizarHora = (horaStr) => {
         return `${h.toString().padStart(2, '0')}:${m}:00`;
     }
 
-    // Si no coincide con ningún formato conocido, devolver la hora original con segundos
+    // ✅ Caso 3: formato con 'h' (ej: '13h40', '9h05', '23h00')
+    const matchH = horaStr.match(/^(\d{1,2})h(\d{1,2})$/i);
+    if (matchH) {
+        let [, h, m] = matchH;
+        h = h.padStart(2, '0');
+        m = m.padStart(2, '0');
+        return `${h}:${m}:00`;
+    }
+
+    // Caso 4: formato desconocido → intentar rescatar minutos si existen
     console.warn('Formato de hora no reconocido, usando valor original:', horaStr);
-    return horaStr.includes(':') ?
-        `${horaStr.split(':').slice(0, 2).join(':')}:00` :
-        '00:00:00';
+    return horaStr.includes(':')
+        ? `${horaStr.split(':').slice(0, 2).join(':')}:00`
+        : '00:00:00';
 };
+
 
 //////////////////////////////////////////
 //                Venta                 //
