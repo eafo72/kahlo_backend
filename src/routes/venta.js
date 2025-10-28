@@ -1601,8 +1601,10 @@ app.get('/stripe/check-session-status', async (req, res) => {
     try {
         const sessionId = req.query.session_id;
 
-        // Retrieve the session from Stripe
-        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        // Retrieve the session from Stripe OJO especificando el id de la cuenta conectada
+        const session = await stripe.checkout.sessions.retrieve(sessionId, {
+            stripeAccount: 'acct_1SAz5b3CVvaJXMYX',
+        });
 
         res.json({ payment_status: session.payment_status });
     } catch (error) {
