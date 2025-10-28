@@ -1598,12 +1598,17 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 });
 
 app.get('/stripe/check-session-status', async (req, res) => {
-  const sessionId = req.query.session_id;
-  
-  // Retrieve the session from Stripe
-  const session = await stripe.checkout.sessions.retrieve(sessionId);
-  
-  res.json({ payment_status: session.payment_status });
+    try {
+        const sessionId = req.query.session_id;
+
+        // Retrieve the session from Stripe
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+        res.json({ payment_status: session.payment_status });
+    } catch (error) {
+        console.error('Error checking session status:', error);
+        res.status(400).json({ error: error.message });
+    }
 });
 
 
@@ -2487,7 +2492,7 @@ app.post('/cancelar', auth, async (req, res) => {
             return res.status(500).json({ msg: "La reserva ya fue cancelada anteriormente", error: true });
         }
 
-         let today = new Date().toLocaleString('es-MX', {
+        let today = new Date().toLocaleString('es-MX', {
             timeZone: 'America/Mexico_City',
             hour12: false // formato 24 horas sin AM/PM
         });
