@@ -1219,6 +1219,7 @@ app.post('/crear-admin-cortesia', async (req, res) => {
     }
 })
 
+/////////////////////////////////////////////////////////// INICIO STRIPE ///////////////////////////////////////////////////////////
 
 app.post('/stripe/create-checkout-session', async (req, res) => {
     try {
@@ -1596,6 +1597,63 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
     res.json({ received: true });
 });
 
+app.get('/stripe/check-session-status', async (req, res) => {
+  const sessionId = req.query.session_id;
+  
+  // Retrieve the session from Stripe
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  
+  res.json({ payment_status: session.payment_status });
+});
+
+
+////////////////////////LIGAR CUENTA ////////////////////////
+
+// Paso 1: crear la cuenta Standard del museo
+app.post('/create-connected-account', async (req, res) => {
+    try {
+        const account = await stripe.accounts.create({
+            type: 'standard', // cuenta propia del museo
+            country: 'MX',    // cambia según el país del museo
+            email: req.body.email,
+        });
+
+        res.json({ accountId: account.id }); // devuelves el acct_xxx
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// Paso 2: crear el accountLink para que el museo complete el onboarding
+app.post('/create-account-link', async (req, res) => {
+    try {
+        const accountLink = await stripe.accountLinks.create({
+            account: req.body.accountId, // el acct_xxx que guardaste
+            refresh_url: 'https://api.museodesarrollo.info/venta/reauth', // si el museo cancela
+            return_url: 'https://api.museodesarrollo.info/venta/success', // si el museo termina
+            type: 'account_onboarding',
+        });
+
+        res.json({ url: accountLink.url });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+app.get('/reauth', (req, res) => {
+    res.send(`
+      <h2>Onboarding cancelado</h2>
+      <p>Puedes intentarlo de nuevo:</p>
+      <a href="/frontend/connect-museum.html">Volver a conectar la cuenta</a>
+    `);
+});
+
+app.get('/success', (req, res) => {
+    res.send('<h2>¡Cuenta conectada correctamente!</h2><p>Ahora puedes empezar a cobrar con Stripe Connect.</p>');
+});
+////////////////////////FIN LIGAR CUENTA ////////////////////////
+
+/////////////////////////////////////////////////////////// FIN STRIPE ///////////////////////////////////////////////////////////
 
 //la feha esta definida por AAAA-MM-DD y la hora desde 00 hasta 23
 app.get('/reservacion/:id', async (req, res) => {
@@ -2110,48 +2168,7 @@ app.post('/verificarQr', async (req, res) => {
     }
 });
 
-// Paso 1: crear la cuenta Standard del museo
-app.post('/create-connected-account', async (req, res) => {
-    try {
-        const account = await stripe.accounts.create({
-            type: 'standard', // cuenta propia del museo
-            country: 'MX',    // cambia según el país del museo
-            email: req.body.email,
-        });
 
-        res.json({ accountId: account.id }); // devuelves el acct_xxx
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
-});
-
-// Paso 2: crear el accountLink para que el museo complete el onboarding
-app.post('/create-account-link', async (req, res) => {
-    try {
-        const accountLink = await stripe.accountLinks.create({
-            account: req.body.accountId, // el acct_xxx que guardaste
-            refresh_url: 'https://api.museodesarrollo.info/venta/reauth', // si el museo cancela
-            return_url: 'https://api.museodesarrollo.info/venta/success', // si el museo termina
-            type: 'account_onboarding',
-        });
-
-        res.json({ url: accountLink.url });
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
-});
-
-app.get('/reauth', (req, res) => {
-    res.send(`
-      <h2>Onboarding cancelado</h2>
-      <p>Puedes intentarlo de nuevo:</p>
-      <a href="/frontend/connect-museum.html">Volver a conectar la cuenta</a>
-    `);
-});
-
-app.get('/success', (req, res) => {
-    res.send('<h2>¡Cuenta conectada correctamente!</h2><p>Ahora puedes empezar a cobrar con Stripe Connect.</p>');
-});
 
 // Historial de compras por usuario (cliente_id)
 app.get('/compras/:clienteId', async (req, res) => {
