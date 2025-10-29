@@ -260,18 +260,33 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         let boletos = parseInt(req.params.boletos);
 
         // Debug logs para depuración
-        console.log('[HORARIOS] fecha:', fecha, 'tourId:', tourId, 'boletos:', boletos);
+        // console.log('[HORARIOS] fecha:', fecha, 'tourId:', tourId, 'boletos:', boletos);
 
         //vemos que dia selecciono 
         let diaSeleccionado = weekDay(fecha);
-        console.log('[HORARIOS] diaSeleccionado:', diaSeleccionado);
+        //console.log('[HORARIOS] diaSeleccionado:', diaSeleccionado);
 
         //buscamos los horarios del tour
         let query = `SELECT * FROM fecha WHERE tour_id=${tourId} AND dia = '${diaSeleccionado}' ORDER BY dia, hora_salida ASC`;
-        console.log('[HORARIOS] query horarios:', query);
+        //console.log('[HORARIOS] query horarios:', query);
         let horariosResult = await db.pool.query(query);
         let horarios = horariosResult[0];
-        console.log('[HORARIOS] horarios encontrados:', horarios);
+        //console.log('[HORARIOS] horarios encontrados:', horarios);
+
+
+
+        /////////////////////////////////////////// inicio fechas especiales //////////////////////////////////////////////
+        const fechasEspeciales = ['2025-10-31', '2025-11-01']; // ajusta al formato real de tu campo `dia`
+
+        // 🔹 Si la fecha NO es especial, solo mostrar horarios hasta las 18:00 sino entonces mostrar todos los horarios
+        if (!fechasEspeciales.includes(fecha)) {
+            
+            horarios = horarios.filter(h => {
+                const hora = String(h.hora_salida).substring(0, 5); // "HH:MM"
+                return hora <= '18:00';
+            });
+        }
+        /////////////////////////////////////////// fin fechas especiales //////////////////////////////////////////////
 
         // Para cada horario, verificar disponibilidad
         let horariosDisponibles = await Promise.all(horarios.map(async (horario) => {
@@ -290,9 +305,9 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
             //let queryViaje = `SELECT * FROM viajeTour WHERE CAST(fecha_ida AS DATE) = '${fecha}' AND HOUR(CAST(fecha_ida AS TIME)) = '${hora}' AND tour_id = ${tourId}`;
             let queryViaje = `SELECT * FROM viajeTour WHERE CAST(fecha_ida AS DATE) = '${fecha}' AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCampo}' AND tour_id = ${tourId}`;
 
-            console.log('[HORARIOS] query viajeTour:', queryViaje);
+            //console.log('[HORARIOS] query viajeTour:', queryViaje);
             let viajeResult = await db.pool.query(queryViaje);
-            console.log('[HORARIOS] viajeResult:', viajeResult[0]);
+            //console.log('[HORARIOS] viajeResult:', viajeResult[0]);
             let disponible = true;
             let lugares_disp = null;
             if (viajeResult[0].length > 0) {
@@ -1630,7 +1645,7 @@ app.get('/stripe/session-check/:sessionId', async (req, res) => {
         const session = await stripe.checkout.sessions.retrieve(sessionId, {
             stripeAccount: 'acct_1SAz5b3CVvaJXMYX',
         });
-        
+
         if (session.payment_status === 'paid') {
             venta[0][0].payment_status = 'Pagado';
         } else if (session.payment_status === 'unpaid') {
