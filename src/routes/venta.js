@@ -1597,22 +1597,109 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
     res.json({ received: true });
 });
 
-app.get('/stripe/check-session-status', async (req, res) => {
+// Endpoint para obtener datos de venta por sessionId de Stripe
+app.get('/stripe/session-check/:sessionId', async (req, res) => {
     try {
-        const sessionId = req.query.session_id;
+        let sessionId = req.params.sessionId;
 
-        // Retrieve the session from Stripe OJO especificando el id de la cuenta conectada
+        let query = `SELECT 
+                        id_reservacion, 
+                        viajeTour_id,
+                        session_id,
+                        id,
+                        no_boletos,
+                        total,
+                        nombre_cliente,
+                        correo,
+                        fecha_compra,
+                        created_at
+                        FROM venta 
+                        WHERE session_id = '${sessionId}';`;
+
+        let venta = await db.pool.query(query);
+
+        if (venta[0].length === 0) {
+            return res.status(404).json({
+                msg: 'No se encontró ninguna venta con ese session ID',
+                error: true,
+                sessionId: sessionId
+            });
+        }
+
+        //revisamos el status de la venta directamente en stripe OJO especificando el id de la cuenta conectada
         const session = await stripe.checkout.sessions.retrieve(sessionId, {
             stripeAccount: 'acct_1SAz5b3CVvaJXMYX',
         });
+        
+        if (session.payment_status === 'paid') {
+            venta[0][0].payment_status = 'Pagado';
+        } else if (session.payment_status === 'unpaid') {
+            venta[0][0].payment_status = 'No Pagado';
+        } else if (session.payment_status === 'processing') {
+            venta[0][0].payment_status = 'Procesando';
+        } else {
+            venta[0][0].payment_status = session.payment_status;
+        }
 
-        res.json({ payment_status: session.payment_status });
+
+        res.status(200).json({
+            error: false,
+            data: venta[0][0],
+            msg: 'Venta encontrada exitosamente'
+        });
+
     } catch (error) {
-        console.error('Error checking session status:', error);
-        res.status(400).json({ error: error.message });
+        res.status(500).json({
+            msg: 'Hubo un error obteniendo los datos',
+            error: true,
+            details: error
+        });
     }
-});
+})
 
+// Endpoint para obtener datos de venta por sessionId de Stripe
+app.get('/stripe/session/:sessionId', async (req, res) => {
+    try {
+        let sessionId = req.params.sessionId;
+
+        let query = `SELECT 
+                        id_reservacion, 
+                        viajeTour_id,
+                        session_id,
+                        id,
+                        no_boletos,
+                        total,
+                        nombre_cliente,
+                        correo,
+                        fecha_compra,
+                        created_at
+                        FROM venta 
+                        WHERE session_id = '${sessionId}';`;
+
+        let venta = await db.pool.query(query);
+
+        if (venta[0].length === 0) {
+            return res.status(404).json({
+                msg: 'No se encontró ninguna venta con ese session ID',
+                error: true,
+                sessionId: sessionId
+            });
+        }
+
+        res.status(200).json({
+            error: false,
+            data: venta[0][0],
+            msg: 'Venta encontrada exitosamente'
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            msg: 'Hubo un error obteniendo los datos',
+            error: true,
+            details: error
+        });
+    }
+})
 
 ////////////////////////LIGAR CUENTA ////////////////////////
 
@@ -1683,49 +1770,6 @@ WHERE venta.id_reservacion = '${reservacion}';`;
     }
 })
 
-// Endpoint para obtener datos de venta por sessionId de Stripe
-app.get('/stripe/session/:sessionId', async (req, res) => {
-    try {
-        let sessionId = req.params.sessionId;
-
-        let query = `SELECT 
-                        id_reservacion, 
-                        viajeTour_id,
-                        session_id,
-                        id,
-                        no_boletos,
-                        total,
-                        nombre_cliente,
-                        correo,
-                        fecha_compra,
-                        created_at
-                        FROM venta 
-                        WHERE session_id = '${sessionId}';`;
-
-        let venta = await db.pool.query(query);
-
-        if (venta[0].length === 0) {
-            return res.status(404).json({
-                msg: 'No se encontró ninguna venta con ese session ID',
-                error: true,
-                sessionId: sessionId
-            });
-        }
-
-        res.status(200).json({
-            error: false,
-            data: venta[0][0],
-            msg: 'Venta encontrada exitosamente'
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            msg: 'Hubo un error obteniendo los datos',
-            error: true,
-            details: error
-        });
-    }
-})
 
 app.get('/landingInfo/:id', async (req, res) => {
     try {
@@ -2076,7 +2120,6 @@ app.put('/checkin', async (req, res) => {
         });
     }
 });
-
 
 
 app.put('/delete', async (req, res) => {
