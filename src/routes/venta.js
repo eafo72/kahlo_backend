@@ -384,7 +384,7 @@ app.post('/crear', async (req, res) => {
                         * 
                         FROM viajeTour 
                         WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
-                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCompleta}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
                         AND tour_id = ${tourId};`;
                 let disponibilidad = await db.pool.query(query);
                 disponibilidad = disponibilidad[0];
@@ -639,7 +639,7 @@ app.post('/crear-admin', async (req, res) => {
                         * 
                         FROM viajeTour 
                         WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
-                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCompleta}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
                         AND tour_id = ${tourId};`;
                 let disponibilidad = await db.pool.query(query);
                 disponibilidad = disponibilidad[0];
@@ -978,7 +978,7 @@ app.post('/crear-admin-cortesia', async (req, res) => {
                         * 
                         FROM viajeTour 
                         WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
-                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCompleta}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
                         AND tour_id = ${tourId};`;
                 let disponibilidad = await db.pool.query(query);
                 disponibilidad = disponibilidad[0];
@@ -1345,12 +1345,13 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
 
                     try {
-
+                        let hora = horaCompleta.split(':');
+                        
                         query = `SELECT 
                         * 
                         FROM viajeTour 
                         WHERE CAST(fecha_ida AS DATE) = '${fecha_ida_original}'
-                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCompleta}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
                         AND tour_id = ${tourId};`;
                         let disponibilidad = await db.pool.query(query);
                         disponibilidad = disponibilidad[0];
