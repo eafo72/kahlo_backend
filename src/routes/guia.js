@@ -80,7 +80,7 @@ app.get('/obtener/:id', async (req, res) => {
 
 app.post('/crear', imageController.upload, async (req, res) => {
     try {
-        let { nombres, apellidos, telefono, correo, empresa_id } = req.body
+        let { nombres, apellidos, telefono, correo, password, empresa_id } = req.body
 
         let errors = Array();
 
@@ -93,6 +93,9 @@ app.post('/crear', imageController.upload, async (req, res) => {
         if (!correo) {
             errors.push({ msg: "El campo correo debe de contener un valor" });
         }
+        if (!password) {
+			errors.push({ msg: "El campo password debe de contener un valor" });
+		}
         if (!empresa_id) {
             errors.push({ msg: "El campo empresa_id debe de contener un valor" });
         }
@@ -126,9 +129,9 @@ app.post('/crear', imageController.upload, async (req, res) => {
                 });
         }
 
-        //se implementara cuando haya validadores
-        //const salt = await bcryptjs.genSalt(10);
-        //const hashedPassword = await bcryptjs.hash(password, salt);
+        
+        const salt = await bcryptjs.genSalt(10);
+        const hashedPassword = await bcryptjs.hash(password, salt);
 
         let today = new Date();
         let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
@@ -165,14 +168,14 @@ app.post('/crear', imageController.upload, async (req, res) => {
 
         query = `INSERT INTO usuario 
                         (nombres, apellidos, 
-                        telefono, correo, 
+                        telefono, correo, password,
                         isGuia, foto, 
                         identificacion, empresa_id,
                         created_at, updated_at) 
                         VALUES 
                         ('${nombres}', '${apellidos}', 
                         '${telefono}','${correo}', 
-                        1, '${foto1}', 
+                        '${hashedPassword}', 1, '${foto1}', 
                         '${identificacion1}', '${empresa_id}',
                         '${fecha}', '${fecha}')`;
 
