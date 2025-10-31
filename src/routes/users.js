@@ -328,7 +328,7 @@ app.get('/obtener/:id', async (req, res) => {
 app.post('/verificar', auth, async (req, res) => {
 	//CONFIRMAMOS QUE EL USUARIO EXISTA EN LA BD Y RETORNAMOS SUS DATOS EXCLUYENDO EL PASSW
 	try {
-		let query = `SELECT id, nombres, apellidos, telefono, telefono_emergencia, correo, isClient, isAdmin, isSuperAdmin, isGuia, isInvestor, status, created_at, empresa_id FROM usuario WHERE id='${req.user.id}'`;
+		let query = `SELECT id, nombres, apellidos, telefono, telefono_emergencia, correo, isClient, isAdmin, isSuperAdmin, isGuia, isInvestor, isPartner,status, created_at, empresa_id FROM usuario WHERE id='${req.user.id}'`;
 		let client = await db.pool.query(query);
 
 		res.status(200).json(client[0]);
