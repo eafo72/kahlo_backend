@@ -1240,6 +1240,35 @@ app.post('/crear-admin-cortesia', async (req, res) => {
 app.post('/stripe/create-checkout-session', async (req, res) => {
     try {
         const { lineItems, customerEmail, successUrl, cancelUrl, metadata } = req.body;
+        
+        /*
+        const { no_boletos, tourId } = metadata;
+        let fecha = metadata.fecha_ida;
+        let hora = normalizarHora(metadata.horaCompleta);
+        hora = hora.split(':');
+
+        if(no_boletos > 12){
+            return res.status(200).json({ error:true, msg: "No se pueden comprar mas de 12 boletos"});
+        }
+
+        let query = `SELECT 
+                        * 
+                        FROM viajeTour 
+                        WHERE CAST(fecha_ida AS DATE) = '${fecha}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
+                        AND tour_id = ${tourId};`;
+        let disponibilidad = await db.pool.query(query);
+
+        //si disponibilidad == 0 significa que no hay ningun viajeTour y entonces si hay lugares
+        if (disponibilidad[0].length > 0) {
+            disponibilidad = disponibilidad[0][0];
+            console.log(query);
+            console.log(disponibilidad);
+            if (disponibilidad.lugares_disp + Number(no_boletos) > 12) {
+                return res.status(200).json({ error: true, msg: "Lugares no disponibles" });
+            }
+        }
+        */
 
         // Crea la sesión en la cuenta conectada
         const session = await stripe.checkout.sessions.create(
@@ -1258,11 +1287,11 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
             }
         );
 
-        res.json({ sessionId: session.id, url: session.url });
+        res.json({ sessionId: session.id, url: session.url, error: false });
 
     } catch (error) {
         console.error('Error creating checkout session:', error);
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: true, msg: error.message });
     }
 });
 
@@ -1347,7 +1376,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
                     try {
                         let hora = horaCompleta.split(':');
-                        
+
                         query = `SELECT 
                         * 
                         FROM viajeTour 
@@ -2596,6 +2625,149 @@ app.post('/cancelar', auth, async (req, res) => {
         console.error('Error en /cancelar:', error);
         res.status(500).json({ msg: 'Error interno', error: true, details: error.message });
     }
+});
+
+app.post("/limpieza-viajes", async (req, res) => {
+  const connection = db.pool; // tu conexión MySQL
+  try {
+    // =========================
+    // 1️⃣ Consolidar viajes con fecha_ida '0000-00-00 00:00:00'
+    // =========================
+    const [viajesMalos] = await connection.query(
+      `SELECT id, lugares_disp
+       FROM viajeTour
+       WHERE fecha_ida = '0000-00-00 00:00:00'
+       ORDER BY lugares_disp DESC, id ASC`
+    );
+
+    if (viajesMalos.length > 0) {
+      const id_fijo_malos = viajesMalos[0].id;
+      const fijo_lugares_disp = Number(viajesMalos[0].lugares_disp) || 0;
+      const a_eliminar = viajesMalos.slice(1).map(v => v.id);
+
+      if (a_eliminar.length > 0) {
+        await connection.query(
+          `UPDATE venta
+           SET viajeTour_id = ?
+           WHERE viajeTour_id IN (?);`,
+          [id_fijo_malos, a_eliminar]
+        );
+
+        await connection.query(
+          `DELETE FROM viajeTour
+           WHERE id IN (?);`,
+          [a_eliminar]
+        );
+      }
+
+      // Actualizar lugares_disp
+      const [sumaBoletosRes] = await connection.query(
+        `SELECT SUM(no_boletos) AS total_boletos
+         FROM venta
+         WHERE viajeTour_id = ?;`,
+        [id_fijo_malos]
+      );
+      const totalBoletos = Number(sumaBoletosRes[0].total_boletos) || 0;
+      const nuevos_lugares_disp = Math.max(0, fijo_lugares_disp - totalBoletos);
+
+      await connection.query(
+        `UPDATE viajeTour
+         SET lugares_disp = ?
+         WHERE id = ?;`,
+        [nuevos_lugares_disp, id_fijo_malos]
+      );
+    }
+
+    // =========================
+    // 2️⃣ Procesar duplicados normales
+    // =========================
+    const [grupos] = await connection.query(
+      `SELECT DATE_FORMAT(fecha_ida, '%Y-%m-%d %H:%i') AS fecha_hora,
+              COUNT(*) AS cantidad
+       FROM viajeTour
+       WHERE fecha_ida > '2025-09-03 11:00:00'
+       GROUP BY fecha_hora
+       HAVING cantidad > 1
+       ORDER BY fecha_hora ASC`
+    );
+
+    const resultados = [];
+
+    for (const g of grupos) {
+      const fechaHora = g.fecha_hora;
+
+      const [viajes] = await connection.query(
+        `SELECT id, fecha_ida, lugares_disp
+         FROM viajeTour
+         WHERE DATE_FORMAT(fecha_ida, '%Y-%m-%d %H:%i') = ?
+         ORDER BY lugares_disp DESC, id ASC`,
+        [fechaHora]
+      );
+
+      if (!viajes || viajes.length < 2) continue;
+
+      const viajesIds = viajes.map(v => v.id);
+      const id_fijo = viajes[0].id;
+      const fijo_lugares_disp = Number(viajes[0].lugares_disp) || 0;
+      const a_eliminar = viajesIds.filter(id => id !== id_fijo);
+
+      let totalBoletos = 0;
+
+      if (a_eliminar.length > 0) {
+        // Mover ventas al viaje fijo
+        await connection.query(
+          `UPDATE venta
+           SET viajeTour_id = ?
+           WHERE viajeTour_id IN (?);`,
+          [id_fijo, a_eliminar]
+        );
+
+        // Borrar los viajes duplicados
+        await connection.query(
+          `DELETE FROM viajeTour
+           WHERE id IN (?);`,
+          [a_eliminar]
+        );
+      }
+
+      // Actualizar lugares_disp
+      const [sumaBoletosRes] = await connection.query(
+        `SELECT SUM(no_boletos) AS total_boletos
+         FROM venta
+         WHERE viajeTour_id = ?;`,
+        [id_fijo]
+      );
+      totalBoletos = Number(sumaBoletosRes[0].total_boletos) || 0;
+      const nuevos_lugares_disp = Math.max(0, fijo_lugares_disp - totalBoletos);
+
+      await connection.query(
+        `UPDATE viajeTour
+         SET lugares_disp = ?
+         WHERE id = ?;`,
+        [nuevos_lugares_disp, id_fijo]
+      );
+
+      resultados.push({
+        fecha_hora: fechaHora,
+        id_fijo,
+        a_eliminar,
+        total_boletos_mover: totalBoletos
+      });
+    }
+
+    res.json({
+      mensaje: "✅ Limpieza completada con éxito.",
+      total_grupos_procesados: resultados.length,
+      resultados
+    });
+
+  } catch (error) {
+    console.error("Error en /limpieza-viajes:", error);
+    res.status(500).json({
+      error: "Error al ejecutar la limpieza.",
+      detalles: error.message
+    });
+  }
 });
 
 
