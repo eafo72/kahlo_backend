@@ -274,7 +274,7 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         //console.log('[HORARIOS] horarios encontrados:', horarios);
 
 
-
+        /*
         /////////////////////////////////////////// inicio fechas especiales //////////////////////////////////////////////
         const fechasEspeciales = ['2025-10-31', '2025-11-01']; // ajusta al formato real de tu campo `dia`
 
@@ -287,6 +287,7 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
             });
         }
         /////////////////////////////////////////// fin fechas especiales //////////////////////////////////////////////
+        */
 
         // Para cada horario, verificar disponibilidad
         let horariosDisponibles = await Promise.all(horarios.map(async (horario) => {
