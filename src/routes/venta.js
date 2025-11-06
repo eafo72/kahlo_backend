@@ -98,6 +98,283 @@ const normalizarHora = (horaStr) => {
         : '00:00:00';
 };
 
+const verificarDisponibilidad = async (no_boletos, tourId, fecha, hora) => {
+
+    hora = hora.split(':');
+
+    if (no_boletos > 12) {
+        return false;
+    }
+
+    let query = `SELECT 
+                        * 
+                        FROM viajeTour 
+                        WHERE CAST(fecha_ida AS DATE) = '${fecha}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
+                        AND tour_id = ${tourId};`;
+    let disponibilidad = await db.pool.query(query);
+
+    //si disponibilidad == 0 significa que no hay ningun viajeTour y entonces si hay lugares
+    if (disponibilidad[0].length > 0) {
+        disponibilidad = disponibilidad[0][0];
+        if (disponibilidad.lugares_disp + Number(no_boletos) > 12) {
+            return false;
+        }
+    }
+    return true;
+}
+
+const getFecha = () => {
+    let today = new Date().toLocaleString('es-MX', {
+        timeZone: 'America/Mexico_City',
+        hour12: false // formato 24 horas sin AM/PM
+    });
+    // Ejemplo: "29/09/2025, 23:42:08"
+    let [datePart, timePart] = today.split(', ');
+    let [day, month, year] = datePart.split('/');
+    let [hours, minutes, seconds] = timePart.split(':');
+    month = month.padStart(2, '0');
+    day = day.padStart(2, '0');
+    hours = hours.padStart(2, '0');
+    minutes = minutes.padStart(2, '0');
+    seconds = seconds.padStart(2, '0');
+    let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    return fecha;
+}
+
+const handleSuccessfulPayment = async (session) => {
+    let fecha = getFecha();
+    let connection;
+
+    try {
+        const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = session.metadata;
+        let fecha_ida_original = session.metadata.fecha_ida;
+        let horaCompleta = normalizarHora(session.metadata.horaCompleta);
+        let id_reservacion = '';
+        let idVenta = '';
+        let viajeTourId = '';
+
+        connection = await db.pool.getConnection();
+        await connection.beginTransaction();
+
+        const [rows] = await connection.query('SELECT * FROM venta WHERE session_id = ?', [session.id]);
+
+        if (rows.length === 0) {
+            console.log('No se encontró la venta');
+            await connection.rollback();
+            connection.release();
+            return;
+        }
+
+        if (rows[0].pagado === 1) {
+            console.log('⚠️ Pago ya procesado, se omite repetición');
+            await connection.rollback();
+            connection.release();
+            return;
+        }
+
+        id_reservacion = rows[0].id_reservacion;
+        idVenta = rows[0].id;
+        viajeTourId = rows[0].viajeTour_id;
+
+        // Marcar como pagado
+        await connection.query(
+            'UPDATE venta SET pagado = 1, total = ?, updated_at = ? WHERE id = ?',
+            [total, fecha, idVenta]
+        );
+
+        await connection.commit();
+        connection.release();
+
+        // ==========================
+        // Aquí seguimos fuera de la transacción
+        // ==========================
+
+        // Generamos el QR
+        const qrCodeBuffer = await generateQRCode(id_reservacion);
+
+        // Crear la tabla de boletos
+        let tiposBoletos = {};
+        try {
+            tiposBoletos = JSON.parse(tipos_boletos);
+            if (typeof tiposBoletos !== 'object' || tiposBoletos === null || Array.isArray(tiposBoletos)) {
+                tiposBoletos = { "General": no_boletos };
+            }
+        } catch (error) {
+            console.error('Error parseando tipos_boletos:', error);
+            tiposBoletos = { "General": no_boletos };
+        }
+
+        const precios = { tipoA: 270, tipoB: 130, tipoC: 65 };
+        const nombres = {
+            tipoA: "Entrada General",
+            tipoB: "Ciudadano Mexicano",
+            tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
+        };
+
+        let tiposBoletosArray = Object.entries(tiposBoletos).map(([tipo, cantidad]) => ({
+            nombre: nombres[tipo] || tipo,
+            precio: precios[tipo] || 0,
+            cantidad
+        }));
+
+        let tablaBoletos = `
+            <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
+                <tr style="background-color:#f5f5f5">
+                    <th style="text-align:left">Tipo de boleto</th>
+                    <th style="text-align:right">Precio</th>
+                    <th style="text-align:center">Cantidad</th>
+                    <th style="text-align:right">Subtotal</th>
+                </tr>`;
+        tiposBoletosArray.forEach(tipo => {
+            let subtotal = Number(tipo.precio) * Number(tipo.cantidad);
+            tablaBoletos += `
+                <tr>
+                    <td style="text-align:left">${tipo.nombre}</td>
+                    <td style="text-align:right">$${Number(tipo.precio).toFixed(2)}</td>
+                    <td style="text-align:center">${Number(tipo.cantidad)}</td>
+                    <td style="text-align:right">$${Number(subtotal).toFixed(2)}</td>
+                </tr>`;
+        });
+        tablaBoletos += `
+            <tr>
+                <td colspan="2"></td>
+                <td style="text-align:center; font-weight:bold">Total</td>
+                <td style="text-align:right; font-weight:bold">$${Number(total).toFixed(2)}</td>
+            </tr>
+            </table>`;
+
+        const emailData = {
+            nombre: nombre_cliente,
+            password: null,
+            fecha: fecha_ida_original,
+            horario: horaCompleta,
+            boletos: no_boletos,
+            tablaBoletos,
+            idReservacion: id_reservacion,
+            total,
+            ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+        };
+
+        const emailHtml = emailTemplate(emailData);
+
+        // Enviar correos
+        await mailer.sendMail({
+            from: process.env.MAIL,
+            to: process.env.MAIL,
+            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            html: emailHtml,
+            attachments: [{ filename: 'qr.png', content: qrCodeBuffer, cid: 'qrImage' }]
+        });
+
+        await mailer.sendMail({
+            from: process.env.MAIL,
+            to: correo,
+            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            html: emailHtml,
+            attachments: [{ filename: 'qr.png', content: qrCodeBuffer, cid: 'qrImage' }]
+        });
+
+        console.log(`✅ Venta procesada exitosamente: ${id_reservacion}, tourId: ${viajeTourId}`);
+    } catch (error) {
+        if (connection) {
+            await connection.rollback();
+            connection.release();
+        }
+        console.error('❌ Error procesando pago en webhook:', error);
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+
+const handleFailedPayment = async (session) => {
+    let fecha = getFecha();
+    let connection;
+
+    try {
+        const { no_boletos, nombre_cliente, correo, total } = session.metadata;
+        let fecha_ida_original = session.metadata.fecha_ida;
+        let horaCompleta = normalizarHora(session.metadata.horaCompleta);
+
+        connection = await db.pool.getConnection();
+        await connection.beginTransaction();
+
+        const [rows] = await connection.query('SELECT * FROM venta WHERE session_id = ?', [session.id]);
+        if (rows.length === 0) {
+            console.log('No se encontró la venta');
+            await connection.rollback();
+            connection.release();
+            return;
+        }
+
+        const id_reservacion = rows[0].id_reservacion;
+        const idVenta = rows[0].id;
+        const viajeTourId = rows[0].viajeTour_id;
+        const boletos_devueltos = rows[0].boletos_devueltos;
+
+        if (boletos_devueltos === 1) {
+            console.log('Boletos ya devueltos');
+            await connection.rollback();
+            connection.release();
+            return;
+        }
+
+        await connection.query(
+            'UPDATE venta SET boletos_devueltos = 1, updated_at = ? WHERE id = ?',
+            [fecha, idVenta]
+        );
+
+        const boletos = Number(no_boletos) || 0;
+        await connection.query(
+            'UPDATE viajeTour SET lugares_disp = lugares_disp + ?, updated_at = ? WHERE id = ?',
+            [boletos, fecha, viajeTourId]
+        );
+
+        await connection.commit();
+        connection.release();
+
+        // =====================
+        // Enviar correos fuera de la transacción
+        // =====================
+        const emailHtml = `
+            <h1>Pago fallido</h1>
+            <p>El pago de la reservación ${id_reservacion} ha fallado.</p>
+            <p>Nombre: ${nombre_cliente}</p>
+            <p>Correo: ${correo}</p>
+            <p>Fecha: ${fecha_ida_original}</p>
+            <p>Horario: ${horaCompleta}</p>
+            <p>Boletos: ${no_boletos}</p>
+            <p>Total: ${total}</p>
+        `;
+
+        await mailer.sendMail({
+            from: process.env.MAIL,
+            to: process.env.MAIL,
+            subject: "¡Pago fallido - Museo Casa Kahlo!",
+            html: emailHtml
+        });
+
+        await mailer.sendMail({
+            from: process.env.MAIL,
+            to: correo,
+            subject: "¡Pago fallido - Museo Casa Kahlo!",
+            html: emailHtml
+        });
+
+        console.log(`⚠️ Pago fallido procesado correctamente: ${id_reservacion}`);
+    } catch (error) {
+        if (connection) {
+            await connection.rollback();
+            connection.release();
+        }
+        console.error('❌ Error procesando pago en webhook:', error);
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+
 
 //////////////////////////////////////////
 //                Venta                 //
@@ -901,7 +1178,7 @@ app.post('/crear-admin-cortesia', async (req, res) => {
         let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
 
         //caracterizticas del boleto de cortesia
-        pagado = 0;
+        pagado = 1;
         status_traspaso = 99;
         total = 0;
 
@@ -1236,39 +1513,9 @@ app.post('/crear-admin-cortesia', async (req, res) => {
 })
 
 /////////////////////////////////////////////////////////// INICIO STRIPE ///////////////////////////////////////////////////////////
-
 app.post('/stripe/create-checkout-session', async (req, res) => {
     try {
         const { lineItems, customerEmail, successUrl, cancelUrl, metadata } = req.body;
-        
-        /*
-        const { no_boletos, tourId } = metadata;
-        let fecha = metadata.fecha_ida;
-        let hora = normalizarHora(metadata.horaCompleta);
-        hora = hora.split(':');
-
-        if(no_boletos > 12){
-            return res.status(200).json({ error:true, msg: "No se pueden comprar mas de 12 boletos"});
-        }
-
-        let query = `SELECT 
-                        * 
-                        FROM viajeTour 
-                        WHERE CAST(fecha_ida AS DATE) = '${fecha}'
-                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
-                        AND tour_id = ${tourId};`;
-        let disponibilidad = await db.pool.query(query);
-
-        //si disponibilidad == 0 significa que no hay ningun viajeTour y entonces si hay lugares
-        if (disponibilidad[0].length > 0) {
-            disponibilidad = disponibilidad[0][0];
-            console.log(query);
-            console.log(disponibilidad);
-            if (disponibilidad.lugares_disp + Number(no_boletos) > 12) {
-                return res.status(200).json({ error: true, msg: "Lugares no disponibles" });
-            }
-        }
-        */
 
         // Crea la sesión en la cuenta conectada
         const session = await stripe.checkout.sessions.create(
@@ -1294,7 +1541,6 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
         res.status(400).json({ error: true, msg: error.message });
     }
 });
-
 
 app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     console.log(' WEBHOOK ENDPOINT ALCANZADO - TIMESTAMP:', new Date().toISOString());
@@ -1630,18 +1876,273 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
         case 'payment_intent.payment_failed':
             const paymentIntent = event.data.object;
-            console.log('');
             console.log('Payment failed:', paymentIntent.id);
             break;
 
         default:
-            console.log('');
-            console.log('Unhandled event type ${event.type}');
+            console.log(`Unhandled event type ${event.type}`);
     }
 
     // Return a 200 response to acknowledge receipt of the event
     res.json({ received: true });
 });
+
+app.post('/stripe/create-checkout-session-new', async (req, res) => {
+    try {
+        const { lineItems, customerEmail, successUrl, cancelUrl, metadata } = req.body;
+
+        const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = metadata;
+        let fecha_ida_original = metadata.fecha_ida;
+        let horaCompleta = normalizarHora(metadata.horaCompleta);
+
+        // 1.- Verificar disponibilidad
+        const disponible = verificarDisponibilidad(no_boletos, tourId, fecha_ida_original, horaCompleta);
+        if (disponible == false) {
+            return res.status(200).json({ error: true, msg: "Cupo no disponible" });
+        }
+
+        // 2.- Crear preventa pagado = 0, total = 0
+        let today = new Date().toLocaleString('es-MX', {
+            timeZone: 'America/Mexico_City',
+            hour12: false // formato 24 horas sin AM/PM
+        });
+        // Ejemplo: "29/09/2025, 23:42:08"
+        let [datePart, timePart] = today.split(', ');
+        let [day, month, year] = datePart.split('/');
+        let [hours, minutes, seconds] = timePart.split(':');
+        month = month.padStart(2, '0');
+        day = day.padStart(2, '0');
+        hours = hours.padStart(2, '0');
+        minutes = minutes.padStart(2, '0');
+        seconds = seconds.padStart(2, '0');
+        let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+        let seCreoRegistro = false;
+        let viajeTour = '';
+        let query = ``;
+        let viajeTourId = null;
+
+        //info tour para calcular fecha de regreso
+        query = `SELECT * FROM tour WHERE id = ${tourId} `;
+        let tour = await db.pool.query(query);
+        tour = tour[0][0];
+        let duracion = tour.duracion;
+        let max_pasajeros = tour.max_pasajeros;
+
+        const fecha_ida_formateada = `${fecha_ida_original} ${horaCompleta}`;
+
+        try {
+            let hora = horaCompleta.split(':');
+
+            query = `SELECT 
+                        * 
+                        FROM viajeTour 
+                        WHERE CAST(fecha_ida AS DATE) = '${fecha_ida_original}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
+                        AND tour_id = ${tourId};`;
+            let disponibilidad = await db.pool.query(query);
+            disponibilidad = disponibilidad[0];
+
+            //formateo de fecha regreso
+            const newfecha = addMinutesToDate(new Date(fecha_ida_formateada), parseInt(duracion));
+            const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
+
+            if (disponibilidad.length == 0) {
+                query = `SELECT * FROM tour WHERE id = ${tourId}`;
+                let result = await db.pool.query(query);
+
+                if (result[0].length == 0) {
+                    console.error("Error en la busqueda del tour por id");
+                    return;
+                }
+
+                result = result[0][0];
+
+                let guia = result.guias;
+                guia = JSON.parse(guia);
+
+                query = `INSERT INTO viajeTour 
+                            (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
+                            VALUES 
+                            ('${fecha_ida_formateada}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
+
+                result = await db.pool.query(query);
+                result = result[0];
+
+                viajeTourId = result.insertId;
+                seCreoRegistro = true;
+
+            } else {
+                viajeTour = disponibilidad[0];
+                viajeTourId = disponibilidad[0].id;
+            }
+
+        } catch (error) {
+            console.log('Error en creacion viajeTour:', error);
+            return;
+        }
+
+        let lugares_disp = 0;
+
+        if (seCreoRegistro) {
+            lugares_disp = max_pasajeros - parseInt(no_boletos);
+        } else {
+            lugares_disp = viajeTour.lugares_disp - parseInt(no_boletos);
+        }
+
+        query = `INSERT INTO venta 
+                          (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, session_id) 
+                          VALUES 
+                          ('V', '${no_boletos}', '${tipos_boletos}', '0', '0', '${fecha}', '0.0', '0', '${fecha_ida_formateada}', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}', '${session.id}')`;
+
+        let result = await db.pool.query(query);
+        result = result[0];
+
+        query = `SELECT 
+                          * 
+                          FROM usuario
+                          WHERE id = ${cliente_id}`;
+        let client = await db.pool.query(query);
+
+        client = client[0];
+
+        if (client.length == 0) {
+            console.error("Error en la busqueda de los datos del cliente");
+            return;
+        }
+        client = client[0];
+
+        let id_reservacion = result.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
+
+        query = `UPDATE viajeTour SET
+                      lugares_disp = '${lugares_disp}'
+                      WHERE id     = ${viajeTourId}`;
+
+        await db.pool.query(query);
+
+        query = `UPDATE venta SET
+                      id_reservacion = '${id_reservacion}'
+                      WHERE id       = ${result.insertId}`;
+
+        await db.pool.query(query);
+
+        // 3.- Crea la sesión en la cuenta conectada
+        const session = await stripe.checkout.sessions.create(
+            {
+                payment_method_types: ['card'],
+                line_items: lineItems,
+                mode: 'payment',
+                success_url: successUrl,
+                cancel_url: cancelUrl,
+                customer_email: customerEmail,
+                metadata: metadata,
+                expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // expira en 30 minutos
+                billing_address_collection: 'auto',
+            },
+            {
+                stripeAccount: 'acct_1S5vt43kq9gDlybw', // 👈 clave: ID de la cuenta en este caso la de NUBA
+            }
+        );
+
+        // 4.- guardar en ventas el sessionId de stripe
+        query = `UPDATE venta SET
+                      session_id = '${session.id}'
+                      WHERE id   = ${result.insertId}`;
+
+        await db.pool.query(query);
+
+        res.json({ sessionId: session.id, url: session.url, error: false });
+
+    } catch (error) {
+        console.error('Error creating checkout session:', error);
+        res.status(400).json({ error: true, msg: error.message });
+    }
+});
+
+app.post('/stripe/webhook-new', express.raw({ type: 'application/json' }), async (req, res) => {
+
+    const sig = req.headers['stripe-signature'];
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET_NUBA_TEST;
+
+    let event;
+
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    } catch (err) {
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    const session = event.data.object;
+
+    // Return a 200 response to acknowledge receipt of the event
+    res.sendStatus(200);
+
+    // Handle the event
+    switch (event.type) {
+        case 'checkout.session.completed':
+            if (session.payment_status === 'paid') {
+                if (session.metadata) {
+
+                    handleSuccessfulPayment(session);
+
+                } else {
+                    console.log(' No hay metadata en checkout.session.completed');
+                    console.log('Session sin metadata:', JSON.stringify(session, null, 2));
+                }
+            }
+            break;
+
+        case 'checkout.session.async_payment_succeeded':
+            if (session.metadata) {
+
+                handleSuccessfulPayment(session);
+
+            } else {
+                console.log(' No hay metadata en checkout.session.completed');
+                console.log('Session sin metadata:', JSON.stringify(session, null, 2));
+            }
+
+            break;
+
+        case 'checkout.session.async_payment_failed':
+            if (session.metadata) {
+                handleFailedPayment(session);
+            } else {
+                console.log(' No hay metadata en checkout.session.completed');
+                console.log('Session sin metadata:', JSON.stringify(session, null, 2));
+            }
+
+            break;
+
+
+        case "checkout.session.expired":
+            if (session.metadata) {
+                handleFailedPayment(session);
+            } else {
+                console.log(' No hay metadata en checkout.session.completed');
+                console.log('Session sin metadata:', JSON.stringify(session, null, 2));
+            }
+            break;
+
+        case 'payment_intent.succeeded':
+            const paymentIntent_success = event.data.object;
+            console.log('Payment Intent succeeded:', paymentIntent_success.id);
+            console.log('PaymentIntent metadata:', paymentIntent_success.metadata);
+            break;
+
+        case 'payment_intent.payment_failed':
+            const paymentIntent = event.data.object;
+            console.log('Payment failed:', paymentIntent.id);
+            break;
+
+        default:
+            console.log(`Unhandled event type ${event.type}`);
+            
+    }
+
+
+});
+
 
 // Endpoint para obtener datos de venta por sessionId de Stripe
 app.get('/stripe/session-check/:sessionId', async (req, res) => {
@@ -2080,13 +2581,24 @@ app.put('/checkin', async (req, res) => {
         if (ventaResult.length === 0) {
             return res.status(404).json({ error: true, msg: "El id de reservacion no existe." });
         }
+
         const venta = ventaResult[0];
+
+        const pagado = venta.pagado;
         const noBoletos = parseInt(venta.no_boletos);
         const checkinActual = venta.checkin || 0;
         const fechaIdaTourUTC = new Date(venta.fecha_ida);
         const now = new Date();
         const nowCDMX = new Date(now.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
         const fechaIdaTourCDMX = new Date(fechaIdaTourUTC.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
+
+        //VERIFICAR ESTADO DEL CAMPO PAGADO
+        if (pagado != 1) {
+            return res.status(403).json({
+                error: true,
+                msg: `Boleto no encontrado`
+            });
+        }
 
         // VERIFICACIÓN DEL DÍA (comentada por ahora)
         if (nowCDMX.toDateString() !== fechaIdaTourCDMX.toDateString()) {
@@ -2628,146 +3140,146 @@ app.post('/cancelar', auth, async (req, res) => {
 });
 
 app.post("/limpieza-viajes", async (req, res) => {
-  const connection = db.pool; // tu conexión MySQL
-  try {
-    // =========================
-    // 1️⃣ Consolidar viajes con fecha_ida '0000-00-00 00:00:00'
-    // =========================
-    const [viajesMalos] = await connection.query(
-      `SELECT id, lugares_disp
+    const connection = db.pool; // tu conexión MySQL
+    try {
+        // =========================
+        // 1️⃣ Consolidar viajes con fecha_ida '0000-00-00 00:00:00'
+        // =========================
+        const [viajesMalos] = await connection.query(
+            `SELECT id, lugares_disp
        FROM viajeTour
        WHERE fecha_ida = '0000-00-00 00:00:00'
        ORDER BY lugares_disp DESC, id ASC`
-    );
+        );
 
-    if (viajesMalos.length > 0) {
-      const id_fijo_malos = viajesMalos[0].id;
-      const fijo_lugares_disp = Number(viajesMalos[0].lugares_disp) || 0;
-      const a_eliminar = viajesMalos.slice(1).map(v => v.id);
+        if (viajesMalos.length > 0) {
+            const id_fijo_malos = viajesMalos[0].id;
+            const fijo_lugares_disp = Number(viajesMalos[0].lugares_disp) || 0;
+            const a_eliminar = viajesMalos.slice(1).map(v => v.id);
 
-      if (a_eliminar.length > 0) {
-        await connection.query(
-          `UPDATE venta
+            if (a_eliminar.length > 0) {
+                await connection.query(
+                    `UPDATE venta
            SET viajeTour_id = ?
            WHERE viajeTour_id IN (?);`,
-          [id_fijo_malos, a_eliminar]
-        );
+                    [id_fijo_malos, a_eliminar]
+                );
 
-        await connection.query(
-          `DELETE FROM viajeTour
+                await connection.query(
+                    `DELETE FROM viajeTour
            WHERE id IN (?);`,
-          [a_eliminar]
-        );
-      }
+                    [a_eliminar]
+                );
+            }
 
-      // Actualizar lugares_disp
-      const [sumaBoletosRes] = await connection.query(
-        `SELECT SUM(no_boletos) AS total_boletos
+            // Actualizar lugares_disp
+            const [sumaBoletosRes] = await connection.query(
+                `SELECT SUM(no_boletos) AS total_boletos
          FROM venta
          WHERE viajeTour_id = ?;`,
-        [id_fijo_malos]
-      );
-      const totalBoletos = Number(sumaBoletosRes[0].total_boletos) || 0;
-      const nuevos_lugares_disp = Math.max(0, fijo_lugares_disp - totalBoletos);
+                [id_fijo_malos]
+            );
+            const totalBoletos = Number(sumaBoletosRes[0].total_boletos) || 0;
+            const nuevos_lugares_disp = Math.max(0, fijo_lugares_disp - totalBoletos);
 
-      await connection.query(
-        `UPDATE viajeTour
+            await connection.query(
+                `UPDATE viajeTour
          SET lugares_disp = ?
          WHERE id = ?;`,
-        [nuevos_lugares_disp, id_fijo_malos]
-      );
-    }
+                [nuevos_lugares_disp, id_fijo_malos]
+            );
+        }
 
-    // =========================
-    // 2️⃣ Procesar duplicados normales
-    // =========================
-    const [grupos] = await connection.query(
-      `SELECT DATE_FORMAT(fecha_ida, '%Y-%m-%d %H:%i') AS fecha_hora,
+        // =========================
+        // 2️⃣ Procesar duplicados normales
+        // =========================
+        const [grupos] = await connection.query(
+            `SELECT DATE_FORMAT(fecha_ida, '%Y-%m-%d %H:%i') AS fecha_hora,
               COUNT(*) AS cantidad
        FROM viajeTour
        WHERE fecha_ida > '2025-09-03 11:00:00'
        GROUP BY fecha_hora
        HAVING cantidad > 1
        ORDER BY fecha_hora ASC`
-    );
+        );
 
-    const resultados = [];
+        const resultados = [];
 
-    for (const g of grupos) {
-      const fechaHora = g.fecha_hora;
+        for (const g of grupos) {
+            const fechaHora = g.fecha_hora;
 
-      const [viajes] = await connection.query(
-        `SELECT id, fecha_ida, lugares_disp
+            const [viajes] = await connection.query(
+                `SELECT id, fecha_ida, lugares_disp
          FROM viajeTour
          WHERE DATE_FORMAT(fecha_ida, '%Y-%m-%d %H:%i') = ?
          ORDER BY lugares_disp DESC, id ASC`,
-        [fechaHora]
-      );
+                [fechaHora]
+            );
 
-      if (!viajes || viajes.length < 2) continue;
+            if (!viajes || viajes.length < 2) continue;
 
-      const viajesIds = viajes.map(v => v.id);
-      const id_fijo = viajes[0].id;
-      const fijo_lugares_disp = Number(viajes[0].lugares_disp) || 0;
-      const a_eliminar = viajesIds.filter(id => id !== id_fijo);
+            const viajesIds = viajes.map(v => v.id);
+            const id_fijo = viajes[0].id;
+            const fijo_lugares_disp = Number(viajes[0].lugares_disp) || 0;
+            const a_eliminar = viajesIds.filter(id => id !== id_fijo);
 
-      let totalBoletos = 0;
+            let totalBoletos = 0;
 
-      if (a_eliminar.length > 0) {
-        // Mover ventas al viaje fijo
-        await connection.query(
-          `UPDATE venta
+            if (a_eliminar.length > 0) {
+                // Mover ventas al viaje fijo
+                await connection.query(
+                    `UPDATE venta
            SET viajeTour_id = ?
            WHERE viajeTour_id IN (?);`,
-          [id_fijo, a_eliminar]
-        );
+                    [id_fijo, a_eliminar]
+                );
 
-        // Borrar los viajes duplicados
-        await connection.query(
-          `DELETE FROM viajeTour
+                // Borrar los viajes duplicados
+                await connection.query(
+                    `DELETE FROM viajeTour
            WHERE id IN (?);`,
-          [a_eliminar]
-        );
-      }
+                    [a_eliminar]
+                );
+            }
 
-      // Actualizar lugares_disp
-      const [sumaBoletosRes] = await connection.query(
-        `SELECT SUM(no_boletos) AS total_boletos
+            // Actualizar lugares_disp
+            const [sumaBoletosRes] = await connection.query(
+                `SELECT SUM(no_boletos) AS total_boletos
          FROM venta
          WHERE viajeTour_id = ?;`,
-        [id_fijo]
-      );
-      totalBoletos = Number(sumaBoletosRes[0].total_boletos) || 0;
-      const nuevos_lugares_disp = Math.max(0, fijo_lugares_disp - totalBoletos);
+                [id_fijo]
+            );
+            totalBoletos = Number(sumaBoletosRes[0].total_boletos) || 0;
+            const nuevos_lugares_disp = Math.max(0, fijo_lugares_disp - totalBoletos);
 
-      await connection.query(
-        `UPDATE viajeTour
+            await connection.query(
+                `UPDATE viajeTour
          SET lugares_disp = ?
          WHERE id = ?;`,
-        [nuevos_lugares_disp, id_fijo]
-      );
+                [nuevos_lugares_disp, id_fijo]
+            );
 
-      resultados.push({
-        fecha_hora: fechaHora,
-        id_fijo,
-        a_eliminar,
-        total_boletos_mover: totalBoletos
-      });
+            resultados.push({
+                fecha_hora: fechaHora,
+                id_fijo,
+                a_eliminar,
+                total_boletos_mover: totalBoletos
+            });
+        }
+
+        res.json({
+            mensaje: "✅ Limpieza completada con éxito.",
+            total_grupos_procesados: resultados.length,
+            resultados
+        });
+
+    } catch (error) {
+        console.error("Error en /limpieza-viajes:", error);
+        res.status(500).json({
+            error: "Error al ejecutar la limpieza.",
+            detalles: error.message
+        });
     }
-
-    res.json({
-      mensaje: "✅ Limpieza completada con éxito.",
-      total_grupos_procesados: resultados.length,
-      resultados
-    });
-
-  } catch (error) {
-    console.error("Error en /limpieza-viajes:", error);
-    res.status(500).json({
-      error: "Error al ejecutar la limpieza.",
-      detalles: error.message
-    });
-  }
 });
 
 
