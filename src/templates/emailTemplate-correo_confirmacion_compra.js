@@ -65,7 +65,7 @@ module.exports = function generarEmail(data) {
                         </td>
                         <td width="50%" style="padding-bottom: 5px; text-align: right; font-weight: bold; line-height: 1.3;">
                           ${data.fecha}
-                          <br>${data.horario} (Recorrido guiado)
+                          <br>${data.horario}
                         </td>
                       </tr>
                     </table>
@@ -165,7 +165,7 @@ module.exports = function generarEmail(data) {
                       Te recomendamos llegar al museo <b style="color:${COLOR_NEUTRO};">30 minutos antes</b> de que inicie tu recorrido.
                     </p>
                     <p style="${styleText()} margin-bottom: 15px;">
-                      Recuerda que NO hay tolerancia. En caso de retraso, podremos incorporarte en el punto del recorrido donde esté tu grupo o reprogramarte para el siguiente recorrido disponible (guiado o libre), sujeto a disponibilidad.
+                      Recuerda que NO hay tolerancia. En caso de retraso, podremos incorporarte en el punto del recorrido donde esté tu grupo o reprogramarte para el siguiente recorrido disponible, sujeto a disponibilidad.
                     </p>
                     <p style="${styleText()} margin-bottom: 15px;">
                       Si compraste un boleto con descuento, presenta una identificación vigente que lo compruebe al entrar.
