@@ -1990,6 +1990,25 @@ app.post('/stripe/create-checkout-session-new', async (req, res) => {
             lugares_disp = viajeTour.lugares_disp - parseInt(no_boletos);
         }
 
+       
+        // 3.- Crea la sesión en la cuenta conectada
+        const session = await stripe.checkout.sessions.create(
+            {
+                payment_method_types: ['card'],
+                line_items: lineItems,
+                mode: 'payment',
+                success_url: successUrl,
+                cancel_url: cancelUrl,
+                customer_email: customerEmail,
+                metadata: metadata,
+                expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // expira en 30 minutos
+                billing_address_collection: 'auto',
+            },
+            {
+                stripeAccount: 'acct_1S5vt43kq9gDlybw', // 👈 clave: ID de la cuenta en este caso la de NUBA
+            }
+        );
+
         query = `INSERT INTO venta_clone
                           (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, session_id) 
                           VALUES 
@@ -2025,25 +2044,8 @@ app.post('/stripe/create-checkout-session-new', async (req, res) => {
                       WHERE id       = ${result.insertId}`;
 
         await db.pool.query(query);
-
-        // 3.- Crea la sesión en la cuenta conectada
-        const session = await stripe.checkout.sessions.create(
-            {
-                payment_method_types: ['card'],
-                line_items: lineItems,
-                mode: 'payment',
-                success_url: successUrl,
-                cancel_url: cancelUrl,
-                customer_email: customerEmail,
-                metadata: metadata,
-                expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // expira en 30 minutos
-                billing_address_collection: 'auto',
-            },
-            {
-                stripeAccount: 'acct_1S5vt43kq9gDlybw', // 👈 clave: ID de la cuenta en este caso la de NUBA
-            }
-        );
-
+      
+        
         // 4.- guardar en ventas el sessionId de stripe
         query = `UPDATE venta_clone SET
                       session_id = '${session.id}'
