@@ -2250,6 +2250,48 @@ app.get('/stripe/session/:sessionId', async (req, res) => {
     }
 })
 
+app.get('/stripe/session-new/:sessionId', async (req, res) => {
+    try {
+        let sessionId = req.params.sessionId;
+
+        let query = `SELECT 
+                        id_reservacion, 
+                        viajeTour_id,
+                        session_id,
+                        id,
+                        no_boletos,
+                        total,
+                        nombre_cliente,
+                        correo,
+                        fecha_compra,
+                        created_at
+                        FROM venta_clone
+                        WHERE session_id = '${sessionId}';`;
+
+        let venta = await db.pool.query(query);
+
+        if (venta[0].length === 0) {
+            return res.status(404).json({
+                msg: 'No se encontró ninguna venta con ese session ID',
+                error: true,
+                sessionId: sessionId
+            });
+        }
+
+        res.status(200).json({
+            error: false,
+            data: venta[0][0],
+            msg: 'Venta encontrada exitosamente'
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            msg: 'Hubo un error obteniendo los datos',
+            error: true,
+            details: error
+        });
+    }
+})
 ////////////////////////LIGAR CUENTA ////////////////////////
 
 // Paso 1: crear la cuenta Standard del museo
@@ -3115,6 +3157,67 @@ app.post('/cancelar', auth, async (req, res) => {
 
         const cancelarQuery = `UPDATE venta AS v
             INNER JOIN viajeTour AS vt ON v.viajeTour_id = vt.id
+            SET 
+                vt.lugares_disp = LEAST(vt.lugares_disp + v.no_boletos, 12),
+                v.total = 0.00,
+                v.checkin = 0,
+                v.pagado = 0,
+                v.comision = 0.0,
+                v.status_traspaso = 99, 
+                v.id_reservacion = CONCAT(v.id_reservacion, '_ANULADO'),
+                v.updated_at = ?
+            WHERE 
+                v.id_reservacion = ? 
+            `;
+
+        await db.pool.query(cancelarQuery, [fecha, id_reservacion]);
+
+
+        res.status(200).json({
+            error: false,
+            msg: `Reserva ${id_reservacion} cancelada.`
+        });
+
+    } catch (error) {
+        console.error('Error en /cancelar:', error);
+        res.status(500).json({ msg: 'Error interno', error: true, details: error.message });
+    }
+});
+
+app.post('/cancelar-new', auth, async (req, res) => {
+
+    try {
+        const { id_reservacion } = req.body
+
+        if (!id_reservacion) {
+            return res.status(400).json({ msg: 'Faltan parámetros obligatorios.', error: true });
+        }
+
+        let query = `SELECT status_traspaso FROM venta_clone WHERE id_reservacion = ? AND status_traspaso = 99`;
+        let cancelable = await db.pool.query(query, [id_reservacion]);
+        cancelable = cancelable[0];
+
+        if (cancelable.length > 0) {
+            return res.status(500).json({ msg: "La reserva ya fue cancelada anteriormente", error: true });
+        }
+
+        let today = new Date().toLocaleString('es-MX', {
+            timeZone: 'America/Mexico_City',
+            hour12: false // formato 24 horas sin AM/PM
+        });
+        // Ejemplo: "29/09/2025, 23:42:08"
+        let [datePart, timePart] = today.split(', ');
+        let [day, month, year] = datePart.split('/');
+        let [hours, minutes, seconds] = timePart.split(':');
+        month = month.padStart(2, '0');
+        day = day.padStart(2, '0');
+        hours = hours.padStart(2, '0');
+        minutes = minutes.padStart(2, '0');
+        seconds = seconds.padStart(2, '0');
+        let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+        const cancelarQuery = `UPDATE venta_clone AS v
+            INNER JOIN viajeTour_clone AS vt ON v.viajeTour_id = vt.id
             SET 
                 vt.lugares_disp = LEAST(vt.lugares_disp + v.no_boletos, 12),
                 v.total = 0.00,
