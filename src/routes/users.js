@@ -11,23 +11,21 @@ const { OAuth2Client } = require('google-auth-library');
 const googleClient = new OAuth2Client('418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com');
 
 const crypto = require('crypto');
-const ENC= '907b12470477dce0917bf3c199c17bcb';
+const ENC = '907b12470477dce0917bf3c199c17bcb';
 const IV = "e51836c72ec9e466";
 const ALGO = "aes-256-cbc"
 
-const encrypt = ((text) => 
-{
-   let cipher = crypto.createCipheriv(ALGO, ENC, IV);
-   let encrypted = cipher.update(text, 'utf8', 'base64');
-   encrypted += cipher.final('base64');
-   return encrypted;
+const encrypt = ((text) => {
+	let cipher = crypto.createCipheriv(ALGO, ENC, IV);
+	let encrypted = cipher.update(text, 'utf8', 'base64');
+	encrypted += cipher.final('base64');
+	return encrypted;
 });
 
-const decrypt = ((text) => 
-{
-   let decipher = crypto.createDecipheriv(ALGO, ENC, IV);
-   let decrypted = decipher.update(text, 'base64', 'utf8');
-   return (decrypted + decipher.final('utf8'));
+const decrypt = ((text) => {
+	let decipher = crypto.createDecipheriv(ALGO, ENC, IV);
+	let decrypted = decipher.update(text, 'base64', 'utf8');
+	return (decrypted + decipher.final('utf8'));
 });
 
 //app.get('/obtener', auth, async (req, res) => {
@@ -262,7 +260,7 @@ app.post('/resetpass', async (req, res) => {
 					WHERE id    = ${user.id}`;
 
 		await db.pool.query(query);
-		
+
 		res.status(200).json({ error: false, msg: "Se ha enviado el correo electrónico" });
 
 	} catch (error) {
@@ -292,28 +290,28 @@ app.get('/obtener/:id', async (req, res) => {
 
 		//console.log(client[0]);
 
-		
-		if(client[0][0]["card_number"] != ''){
-		   if (client[0][0]["card_number"] !== null && client[0][0]["card_number"] !== '' && client[0][0]["card_number"] !== 'null') {
-			   client[0][0]["card_number"] = decrypt(client[0][0]["card_number"]);
-		   }
+
+		if (client[0][0]["card_number"] != '') {
+			if (client[0][0]["card_number"] !== null && client[0][0]["card_number"] !== '' && client[0][0]["card_number"] !== 'null') {
+				client[0][0]["card_number"] = decrypt(client[0][0]["card_number"]);
+			}
 		}
-		if(client[0][0]["expires_month"] != ''){
-		   if (client[0][0]["expires_month"] !== null && client[0][0]["expires_month"] !== '' && client[0][0]["expires_month"] !== 'null') {
-			   client[0][0]["expires_month"] = decrypt(client[0][0]["expires_month"]);
-		   }
+		if (client[0][0]["expires_month"] != '') {
+			if (client[0][0]["expires_month"] !== null && client[0][0]["expires_month"] !== '' && client[0][0]["expires_month"] !== 'null') {
+				client[0][0]["expires_month"] = decrypt(client[0][0]["expires_month"]);
+			}
 		}
-		if(client[0][0]["expires_year"] != ''){
-		   if (client[0][0]["expires_year"] !== null && client[0][0]["expires_year"] !== '' && client[0][0]["expires_year"] !== 'null') {
-			   client[0][0]["expires_year"] = decrypt(client[0][0]["expires_year"]);
-		   }
-		}	
-		if(client[0][0]["cvc"] != ''){
-		   if (client[0][0]["cvc"] !== null && client[0][0]["cvc"] !== '' && client[0][0]["cvc"] !== 'null') {
-			   client[0][0]["cvc"] = decrypt(client[0][0]["cvc"]);
-		   }
+		if (client[0][0]["expires_year"] != '') {
+			if (client[0][0]["expires_year"] !== null && client[0][0]["expires_year"] !== '' && client[0][0]["expires_year"] !== 'null') {
+				client[0][0]["expires_year"] = decrypt(client[0][0]["expires_year"]);
+			}
 		}
-			
+		if (client[0][0]["cvc"] != '') {
+			if (client[0][0]["cvc"] !== null && client[0][0]["cvc"] !== '' && client[0][0]["cvc"] !== 'null') {
+				client[0][0]["cvc"] = decrypt(client[0][0]["cvc"]);
+			}
+		}
+
 
 
 
@@ -344,33 +342,33 @@ app.post('/verificarCorreo', async (req, res) => {
 
 	let errors = Array();
 
-		if (!correoClient) {
-			errors.push({ msg: "El campo correo debe de contener un valor" });
-		}
+	if (!correoClient) {
+		errors.push({ msg: "El campo correo debe de contener un valor" });
+	}
 
-		if (errors.length >= 1) {
+	if (errors.length >= 1) {
 
-			return res.status(400)
-				.json({
-					msg: 'Errores en los parametros',
-					error: true,
-					details: errors
-				});
+		return res.status(400)
+			.json({
+				msg: 'Errores en los parametros',
+				error: true,
+				details: errors
+			});
 
-		}
+	}
 
 
-		let query = `SELECT *
+	let query = `SELECT *
                         FROM usuario 
                         WHERE correo='${correoClient}' AND isClient = 1`;
 
-		let existCorreo = await db.pool.query(query);
+	let existCorreo = await db.pool.query(query);
 
-		if (existCorreo[0].length >= 1) {
-			res.status(200).json({"existe":true});
-		}else{
-			res.status(200).json({"existe":false});
-		}
+	if (existCorreo[0].length >= 1) {
+		res.status(200).json({ "existe": true });
+	} else {
+		res.status(200).json({ "existe": false });
+	}
 
 })
 
@@ -397,7 +395,7 @@ app.put('/set', async (req, res) => {
 		}
 		if (!card_number) {
 			card_number = null;
-		}else{
+		} else {
 			card_number = encrypt(card_number);
 		}
 		if (!name_on_card) {
@@ -405,17 +403,17 @@ app.put('/set', async (req, res) => {
 		}
 		if (!expires_month) {
 			expires_month = null;
-		}else{
+		} else {
 			expires_month = encrypt(expires_month);
 		}
 		if (!expires_year) {
 			expires_year = null;
-		}else{
+		} else {
 			expires_year = encrypt(expires_year);
 		}
 		if (!cvc) {
 			cvc = null;
-		}else{
+		} else {
 			cvc = encrypt(cvc);
 		}
 
@@ -602,164 +600,169 @@ app.post('/google-login', async (req, res) => {
 	const { id_token } = req.body;
 	let payload;
 	if (!id_token) {
-	  return res.status(400).json({ msg: 'ID Token de Google no proporcionado', error: true });
+		return res.status(400).json({ msg: 'ID Token de Google no proporcionado', error: true });
 	}
 	try {
-	// Para ver el contenido del token de Google
-	const decodedToken = jwt.decode(id_token);
-	console.log("Aca ando Contenido del token decodificado:", decodedToken);
-  } catch(err) {
-	console.error("Aca ando No se pudo decodificar el token para depuración");
-  }
-  
+		// Para ver el contenido del token de Google
+		const decodedToken = jwt.decode(id_token);
+		console.log("Aca ando Contenido del token decodificado:", decodedToken);
+	} catch (err) {
+		console.error("Aca ando No se pudo decodificar el token para depuración");
+	}
+
 	try {
-	  // 1. Verifica el token de Google
-	  const client = new OAuth2Client('418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com');
-	  const ticket = await client.verifyIdToken({
-		idToken: id_token,
-		audience: '418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com',
-	  });
-	  payload = ticket.getPayload();
-	  
-	  console.log("Datos del token de Google:", {
-		email: payload.email,
-		nombres: payload.given_name,
-		apellidos: payload.family_name
-	  });
+		// 1. Verifica el token de Google
+		const client = new OAuth2Client('418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com');
+		const ticket = await client.verifyIdToken({
+			idToken: id_token,
+			audience: '418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com',
+		});
+		payload = ticket.getPayload();
+
+		console.log("Datos del token de Google:", {
+			email: payload.email,
+			nombres: payload.given_name,
+			apellidos: payload.family_name
+		});
 	} catch (error) {
-	  console.error("Error verificando token de Google:", error);
-	  return res.status(401).json({ msg: 'Token de Google no válido', error: true });
+		console.error("Error verificando token de Google:", error);
+		return res.status(401).json({ msg: 'Token de Google no válido', error: true });
 	}
 	const { email, given_name, family_name } = payload;
 	let user;
 	try {
-	  // 2. Busca si el usuario ya existe por su correo
-	  let query = `SELECT * FROM usuario WHERE correo = ?`;
-	  let [rows] = await db.pool.query(query, [email]);
-	  if (rows.length > 0) {
-		// Si el usuario existe, usa su registro
-		user = rows[0];
-		console.log("Usuario encontrado en BD:", user.nombres);
-	  } else {
-		// 3. Si es un usuario nuevo, crea un nuevo registro sin contraseña, usando la estructura completa de tu API de registro.
-		console.log("Usuario no encontrado. Creando nuevo registro...");
-		
-		const nombres = given_name || '';
-		const apellidos = family_name || '';
-		const telefono = null;
-		const telefono_emergencia = null;
-		
-		// Obtiene la fecha y hora actuales
-		let today = new Date();
-		let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
-		let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
-		let fecha = date + ' ' + time;
-		const createUserQuery = `
+		// 2. Busca si el usuario ya existe por su correo
+		let query = `SELECT * FROM usuario WHERE correo = ?`;
+		let [rows] = await db.pool.query(query, [email]);
+		if (rows.length > 0) {
+			// Si el usuario existe, usa su registro
+			user = rows[0];
+			console.log("Usuario encontrado en BD:", user.nombres);
+		} else {
+			// 3. Si es un usuario nuevo, crea un nuevo registro sin contraseña, usando la estructura completa de tu API de registro.
+			console.log("Usuario no encontrado. Creando nuevo registro...");
+
+			const nombres = given_name || '';
+			const apellidos = family_name || '';
+			const telefono = null;
+			const telefono_emergencia = null;
+
+			// Obtiene la fecha y hora actuales
+			let today = new Date();
+			let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
+			let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
+			let fecha = date + ' ' + time;
+			const createUserQuery = `
 		  INSERT INTO usuario 
 			(nombres, apellidos, telefono, telefono_emergencia, correo, password, isClient, created_at, updated_at) 
 		  VALUES 
 			(?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`;
-		const [insertResult] = await db.pool.query(
-		  createUserQuery, 
-		  [nombres, apellidos, telefono, telefono_emergencia, email, null, 1, fecha, fecha]
-		);
-		
-		const newUserId = insertResult.insertId;
-		// Vuelve a buscar el usuario recién creado para obtener todos sus datos
-		let [newRows] = await db.pool.query(`SELECT * FROM usuario WHERE correo = ?`, [email]);
-		user = newRows[0];
-		console.log("Nuevo usuario creado con ID:", newUserId);
-	  }
-	  // 4. Genera y devuelve un token de sesión (JWT) para tu aplicación
-	  const sessionPayload = { user: { id: user.id } };
-	  jwt.sign(sessionPayload, process.env.SECRET, { expiresIn: '1h' }, (error, token) => {
-		if (error) {
-		  console.error("Error al generar JWT:", error);
-		  return res.status(500).json({ msg: 'Error al generar el token de sesión', error: true });
+			const [insertResult] = await db.pool.query(
+				createUserQuery,
+				[nombres, apellidos, telefono, telefono_emergencia, email, null, 1, fecha, fecha]
+			);
+
+			const newUserId = insertResult.insertId;
+			// Vuelve a buscar el usuario recién creado para obtener todos sus datos
+			let [newRows] = await db.pool.query(`SELECT * FROM usuario WHERE correo = ?`, [email]);
+			user = newRows[0];
+			console.log("Nuevo usuario creado con ID:", newUserId);
 		}
-		// 5. Devuelve el token Y los datos del usuario para el frontend
-		res.status(200).json({ 
-		  error: false, 
-		  token: token,
-		  nombres: user.nombres,
-		  apellidos: user.apellidos,
-		  correo: user.correo,
-		  telefono: user.telefono || ''
+		// 4. Genera y devuelve un token de sesión (JWT) para tu aplicación
+		const sessionPayload = { user: { id: user.id } };
+		jwt.sign(sessionPayload, process.env.SECRET, { expiresIn: '1h' }, (error, token) => {
+			if (error) {
+				console.error("Error al generar JWT:", error);
+				return res.status(500).json({ msg: 'Error al generar el token de sesión', error: true });
+			}
+			// 5. Devuelve el token Y los datos del usuario para el frontend
+			res.status(200).json({
+				error: false,
+				token: token,
+				nombres: user.nombres,
+				apellidos: user.apellidos,
+				correo: user.correo,
+				telefono: user.telefono || ''
+			});
 		});
-	  });
 	} catch (error) {
-	  console.error("Error en el flujo de Google Login:", error);
-	  res.status(500).json({ msg: 'Hubo un error en el servidor', error: true, details: error.message });
+		console.error("Error en el flujo de Google Login:", error);
+		res.status(500).json({ msg: 'Hubo un error en el servidor', error: true, details: error.message });
 	}
-  });
+});
 
 // ==========================================================
 // 🚀 LOGIN PARA PORTAL CAUTIVO (ARUBA) - EMAIL Y GOOGLE LOGIN
 // ==========================================================
 
 app.post('/loginInternet', async (req, res) => {
-  try {
-    const { email, password, id_token } = req.body;
-    res.type('text/plain'); // Aruba solo entiende texto plano
+	try {
+		const { email, password, id_token, client_mac, ap_ip } = req.body;
 
-    // --- OPCIÓN 1: LOGIN NORMAL ---
-    if (email && password) {
-      let [userRows] = await db.pool.query(
-        `SELECT * FROM usuario WHERE correo = ? AND status = 1`, [email]
-      );
+		if (!client_mac || !ap_ip) {
+			console.error("ERROR: faltan parámetros de Aruba");
+			return res.json({ status: "ERROR", msg: "Missing Aruba parameters" });
+		}
 
-      if (userRows.length === 0) return res.send('Auth: Failed');
 
-      const user = userRows[0];
-      const passCorrecto = await bcryptjs.compare(password, user.password);
-      if (!passCorrecto) return res.send('Auth: Failed');
+		// --- OPCIÓN 1: LOGIN NORMAL ---
+		if (email && password) {
+			let [userRows] = await db.pool.query(
+				`SELECT * FROM usuario WHERE correo = ? AND status = 1`, [email]
+			);
 
-      return res.send('Auth:Successful');
-    }
+			if (userRows.length === 0) return res.json({ status: "DENY" });
 
-    // --- OPCIÓN 2: LOGIN CON GOOGLE ---
-    if (id_token) {
-      try {
-        const ticket = await googleClient.verifyIdToken({
-          idToken: id_token,
-          audience: '418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com',
-        });
-        const payload = ticket.getPayload();
-        const emailGoogle = payload.email;
-        const nombres = payload.given_name || '';
-        const apellidos = payload.family_name || '';
+			const user = userRows[0];
+			const passCorrecto = await bcryptjs.compare(password, user.password);
+			if (!passCorrecto) return res.json({ status: "DENY" });
 
-        // Verificar si existe el usuario
-        let [rows] = await db.pool.query(`SELECT * FROM usuario WHERE correo = ?`, [emailGoogle]);
+		}
 
-        if (rows.length === 0) {
-          // Crear nuevo usuario si no existe
-          let now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-          await db.pool.query(`
+		// --- OPCIÓN 2: LOGIN CON GOOGLE ---
+		if (id_token) {
+			const ticket = await googleClient.verifyIdToken({
+				idToken: id_token,
+				audience: '418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com',
+			});
+			const payload = ticket.getPayload();
+			const emailGoogle = payload.email;
+			const nombres = payload.given_name || '';
+			const apellidos = payload.family_name || '';
+
+			// Verificar si existe el usuario
+			let [rows] = await db.pool.query(`SELECT * FROM usuario WHERE correo = ?`, [emailGoogle]);
+
+			if (rows.length === 0) {
+				// Crear nuevo usuario si no existe
+				let now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+				await db.pool.query(`
             INSERT INTO usuario (nombres, apellidos, correo, password, isClient, status, created_at, updated_at)
             VALUES (?, ?, ?, NULL, 1, 1, ?, ?)
           `, [nombres, apellidos, emailGoogle, now, now]);
-        }
+			}
+		}
 
-        return res.send('Auth:Successful');
+		// ✅ Paso 3: responder A ARUBA (esto es lo más importante)
+		const arubaUrl = `http://${ap_ip}:8080/portal/api/v1/clients/${client_mac}/authorize`;
 
+		await axios.post(arubaUrl, "InstantOn.Acknowledge", {
+			headers: { "Content-Type": "text/plain" },
+			timeout: 3000
+		});
 
-      } catch (error) {
-        console.error("Error en Google Login para portal:", error);
-        return res.send('Auth: Failed');
-      }
-    }
+		console.log("✅ Usuario autorizado en Aruba:", client_mac);
 
-    // Si no se envió email/password ni token
-    return res.send('Auth: Failed');
+		// ✅ Paso 4: responder al navegador
+		return res.json({ status: "OK" });
 
-  } catch (error) {
-    console.error("Error general en /loginInternet:", error);
-    res.type('text/plain');
-    res.send('Auth: Failed');
-  }
-});  
+	} catch (error) {
+		console.error("Error general en /loginInternet:", error);
+		res.type('text/plain');
+		res.send('Auth: Failed');
+	}
+});
 
 module.exports = app
 
