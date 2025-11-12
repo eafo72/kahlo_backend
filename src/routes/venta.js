@@ -3282,6 +3282,13 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
         const correo = rows[0].correo;
         const total = rows[0].total;
         let fecha_comprada = rows[0].fecha_comprada;
+
+        // Quitar la T y la Z (u otros caracteres raros)
+        fechaHora = fecha_comprada.replace("T", " ").replace("Z", "");
+
+        // Separar fecha y hora
+        const [fecha, hora] = fechaHora.split(" ");
+                
         
         if (boletos_devueltos === 1) {
             console.log('Boletos ya devueltos');
@@ -3312,7 +3319,8 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
             <p>Id de la reservación ${id_reservacion}</p>
             <p>Nombre: ${nombre_cliente}</p>
             <p>Correo: ${correo}</p>
-            <p>Fecha: ${fecha_comprada}</p>
+            <p>Fecha: ${fecha}</p>
+            <p>Hora: ${hora}</p>
             <p>Boletos: ${no_boletos}</p>
         `;
 
