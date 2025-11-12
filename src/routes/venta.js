@@ -98,6 +98,46 @@ const normalizarHora = (horaStr) => {
         : '00:00:00';
 };
 
+function separarFechaHora(fecha_comprada) {
+  if (fecha_comprada == null) {
+    throw new Error("fecha_comprada es null o undefined");
+  }
+
+  // Si es número (timestamp), convertir a Date
+  if (typeof fecha_comprada === "number") {
+    fecha_comprada = new Date(fecha_comprada);
+  }
+
+  // Si es objeto Date, obtener su ISO (UTC) como base
+  if (fecha_comprada instanceof Date) {
+    // toISOString -> "2025-11-12T09:30:00.000Z"
+    fecha_comprada = fecha_comprada.toISOString();
+  }
+
+  // A estas alturas asumimos que es string (si no lo es, lanzar)
+  if (typeof fecha_comprada !== "string") {
+    throw new Error("fecha_comprada debe ser string, number o Date");
+  }
+
+  // Normalizar:
+  // 1) cambiar 'T' por espacio
+  // 2) quitar milisegundos (".123") si vienen
+  // 3) quitar zona horaria final: "Z" o "+02:00" o "-0500" etc.
+  // Resultado esperado: "YYYY-MM-DD HH:mm:ss" (si vienen segundos)
+  const limpio = fecha_comprada
+    .replace("T", " ")
+    .replace(/\.\d+/, "")                // quita .000 (milisegundos)
+    .replace(/(Z|[+-]\d{2}:?\d{2})$/, "") // quita Z o +02:00 o -0500
+    .trim();
+
+  // separar por el primer espacio (fecha y resto)
+  const partes = limpio.split(" ");
+  const fecha = partes[0] || "";
+  const hora = partes.slice(1).join(" ") || ""; // en caso de que haya espacio en la zona original
+
+  return { fecha, hora };
+}
+
 const verificarDisponibilidad = async (no_boletos, tourId, fecha, hora) => {
 
     hora = hora.split(':');
@@ -3281,11 +3321,10 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
         const nombre_cliente = rows[0].nombre_cliente;
         const correo = rows[0].correo;
         const total = rows[0].total;
-        let fecha_comprada = rows[0].fecha_comprada;
-
-        // Separar fecha y hora
-        const [fecha, hora] = fecha_comprada.split(" ");
-                
+        
+        const fechaHora = separarFechaHora(rows[0].fecha_comprada);
+        
+               
         
         if (boletos_devueltos === 1) {
             console.log('Boletos ya devueltos');
@@ -3316,8 +3355,8 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
             <p>Id de la reservación ${id_reservacion}</p>
             <p>Nombre: ${nombre_cliente}</p>
             <p>Correo: ${correo}</p>
-            <p>Fecha: ${fecha}</p>
-            <p>Hora: ${hora}</p>
+            <p>Fecha: ${fechaHora.fecha}</p>
+            <p>Hora: ${fechaHora.hora}</p>
             <p>Boletos: ${no_boletos}</p>
         `;
 
