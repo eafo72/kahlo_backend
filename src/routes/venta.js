@@ -1990,7 +1990,7 @@ app.post('/stripe/create-checkout-session-new', async (req, res) => {
             lugares_disp = viajeTour.lugares_disp - parseInt(no_boletos);
         }
 
-       
+
         // 3.- Crea la sesión en la cuenta conectada
         const session = await stripe.checkout.sessions.create(
             {
@@ -2044,8 +2044,8 @@ app.post('/stripe/create-checkout-session-new', async (req, res) => {
                       WHERE id       = ${result.insertId}`;
 
         await db.pool.query(query);
-      
-        
+
+
         // 4.- guardar en ventas el sessionId de stripe
         query = `UPDATE venta_clone SET
                       session_id = '${session.id}'
@@ -2139,11 +2139,11 @@ app.post('/stripe/webhook-new', express.raw({ type: 'application/json' }), async
 
         case 'payment_intent.canceled':
             console.log("⚠️ Payment Intent canceled:", event.data.object.id);
-            break;    
+            break;
 
         default:
             console.log(`Unhandled event type ${event.type}`);
-            
+
     }
 
 
@@ -3247,6 +3247,102 @@ app.post('/cancelar-new', auth, async (req, res) => {
         console.error('Error en /cancelar:', error);
         res.status(500).json({ msg: 'Error interno', error: true, details: error.message });
     }
+});
+
+app.post('/stripe/cancelar-compra', async (req, res) => {
+
+    const { sessionId } = req.body;
+
+    if (!sessionId) {
+        return res.status(400).json({ msg: 'Faltan parámetros obligatorios.', error: true });
+    }
+
+    
+    let fecha = getFecha();
+    let connection;
+
+    try {
+        connection = await db.pool.getConnection();
+        await connection.beginTransaction();
+
+        const [rows] = await connection.query('SELECT * FROM venta_clone WHERE session_id = ?', [sessionId]);
+        if (rows.length === 0) {
+            console.log('No se encontró la venta');
+            await connection.rollback();
+            connection.release();
+            return;
+        }
+
+        const id_reservacion = rows[0].id_reservacion;
+        const idVenta = rows[0].id;
+        const viajeTourId = rows[0].viajeTour_id;
+        const boletos_devueltos = rows[0].boletos_devueltos;
+        const no_boletos = rows[0].no_boletos;
+        const nombre_cliente = rows[0].nombre_cliente;
+        const correo = rows[0].correo;
+        const total = rows[0].total;
+        let fecha_comprada = rows[0].fecha_comprada;
+        
+        if (boletos_devueltos === 1) {
+            console.log('Boletos ya devueltos');
+            await connection.rollback();
+            connection.release();
+            return;
+        }
+
+        await connection.query(
+            'UPDATE venta_clone SET boletos_devueltos = 1, updated_at = ? WHERE id = ?',
+            [fecha, idVenta]
+        );
+
+        const boletos = Number(no_boletos) || 0;
+        await connection.query(
+            'UPDATE viajeTour_clone SET lugares_disp = lugares_disp + ?, updated_at = ? WHERE id = ?',
+            [boletos, fecha, viajeTourId]
+        );
+
+        await connection.commit();
+        connection.release();
+
+        // =====================
+        // Enviar correos fuera de la transacción
+        // =====================
+        const emailHtml = `
+            <h1>Compra cancelada</h1>
+            <p>Id de la reservación ${id_reservacion}</p>
+            <p>Nombre: ${nombre_cliente}</p>
+            <p>Correo: ${correo}</p>
+            <p>Fecha: ${fecha_comprada}</p>
+            <p>Boletos: ${no_boletos}</p>
+        `;
+
+        await mailer.sendMail({
+            from: process.env.MAIL,
+            to: process.env.MAIL,
+            subject: "¡Compra cancelada - Museo Casa Kahlo!",
+            html: emailHtml
+        });
+
+        await mailer.sendMail({
+            from: process.env.MAIL,
+            to: correo,
+            subject: "¡Compra cancelada - Museo Casa Kahlo!",
+            html: emailHtml
+        });
+
+        console.log(`⚠️ Compra cancelada procesada correctamente: ${id_reservacion}`);
+    } catch (error) {
+        if (connection) {
+            await connection.rollback();
+            connection.release();
+        }
+        console.error('❌ Error procesando la cancelación de la compra:', error);
+    } finally {
+        if (connection) connection.release();
+    }
+
+    res.json({msj: "✅ Compra cancelada con éxito."});
+
 });
 
 app.post("/limpieza-viajes", async (req, res) => {
