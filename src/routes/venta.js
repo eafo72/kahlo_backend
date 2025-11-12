@@ -2137,6 +2137,10 @@ app.post('/stripe/webhook-new', express.raw({ type: 'application/json' }), async
             console.log('Payment failed:', paymentIntent.id);
             break;
 
+        case 'payment_intent.canceled':
+            console.log("⚠️ Payment Intent canceled:", event.data.object.id);
+            break;    
+
         default:
             console.log(`Unhandled event type ${event.type}`);
             
