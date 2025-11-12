@@ -1998,7 +1998,7 @@ app.post('/stripe/create-checkout-session-new', async (req, res) => {
                 line_items: lineItems,
                 mode: 'payment',
                 success_url: successUrl,
-                cancel_url: cancelUrl,
+                cancel_url: `${cancelUrl}?session_id={CHECKOUT_SESSION_ID}`,
                 customer_email: customerEmail,
                 metadata: metadata,
                 expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // expira en 30 minutos
