@@ -697,71 +697,57 @@ app.post('/google-login', async (req, res) => {
 // ==========================================================
 
 app.post('/loginInternet', async (req, res) => {
-	try {
-		const { email, password, id_token, client_mac, ap_ip } = req.body;
+  try {
+    const { email, password, id_token, aruba_auth_url } = req.body;
 
-		if (!client_mac || !ap_ip) {
-			console.error("ERROR: faltan parámetros de Aruba");
-			return res.json({ status: "ERROR", msg: "Missing Aruba parameters" });
-		}
+    if (!aruba_auth_url) {
+      console.error("❌ Falta aruba_auth_url");
+      return res.status(400).json({ status: "ERROR", msg: "Missing Aruba auth URL" });
+    }
 
+    // --- OPCIÓN 1: LOGIN NORMAL ---
+    if (email && password) {
+      const [userRows] = await db.pool.query(
+        `SELECT * FROM usuario WHERE correo = ? AND status = 1`,
+        [email]
+      );
+      if (userRows.length === 0) return res.json({ status: "DENY" });
+      const user = userRows[0];
+      const passCorrecto = await bcryptjs.compare(password, user.password);
+      if (!passCorrecto) return res.json({ status: "DENY" });
+    }
 
-		// --- OPCIÓN 1: LOGIN NORMAL ---
-		if (email && password) {
-			let [userRows] = await db.pool.query(
-				`SELECT * FROM usuario WHERE correo = ? AND status = 1`, [email]
-			);
+    // --- OPCIÓN 2: LOGIN CON GOOGLE ---
+    if (id_token) {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: id_token,
+        audience: '418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com',
+      });
+      const payload = ticket.getPayload();
+      const emailGoogle = payload.email;
+      const nombres = payload.given_name || '';
+      const apellidos = payload.family_name || '';
+      const [rows] = await db.pool.query(`SELECT * FROM usuario WHERE correo = ?`, [emailGoogle]);
+      if (rows.length === 0) {
+        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        await db.pool.query(`
+          INSERT INTO usuario (nombres, apellidos, correo, password, isClient, status, created_at, updated_at)
+          VALUES (?, ?, ?, NULL, 1, 1, ?, ?)
+        `, [nombres, apellidos, emailGoogle, now, now]);
+      }
+    }
 
-			if (userRows.length === 0) return res.json({ status: "DENY" });
+    // ✅ Paso 3: Enviar el acknowledge al portal Aruba Instant On
+    const finalUrl = `${aruba_auth_url}&auth_result=InstantOn.Acknowledge`;
+    await axios.get(finalUrl, { timeout: 3000 });
 
-			const user = userRows[0];
-			const passCorrecto = await bcryptjs.compare(password, user.password);
-			if (!passCorrecto) return res.json({ status: "DENY" });
+    console.log("✅ Cliente liberado mediante Aruba Instant On");
+    return res.json({ status: "OK" });
 
-		}
-
-		// --- OPCIÓN 2: LOGIN CON GOOGLE ---
-		if (id_token) {
-			const ticket = await googleClient.verifyIdToken({
-				idToken: id_token,
-				audience: '418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com',
-			});
-			const payload = ticket.getPayload();
-			const emailGoogle = payload.email;
-			const nombres = payload.given_name || '';
-			const apellidos = payload.family_name || '';
-
-			// Verificar si existe el usuario
-			let [rows] = await db.pool.query(`SELECT * FROM usuario WHERE correo = ?`, [emailGoogle]);
-
-			if (rows.length === 0) {
-				// Crear nuevo usuario si no existe
-				let now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-				await db.pool.query(`
-            INSERT INTO usuario (nombres, apellidos, correo, password, isClient, status, created_at, updated_at)
-            VALUES (?, ?, ?, NULL, 1, 1, ?, ?)
-          `, [nombres, apellidos, emailGoogle, now, now]);
-			}
-		}
-
-		// ✅ Paso 3: responder A ARUBA (esto es lo más importante)
-		const arubaUrl = `http://${ap_ip}:8080/portal/api/v1/clients/${client_mac}/authorize`;
-
-		await axios.post(arubaUrl, "InstantOn.Acknowledge", {
-			headers: { "Content-Type": "text/plain" },
-			timeout: 3000
-		});
-
-		console.log("✅ Usuario autorizado en Aruba:", client_mac);
-
-		// ✅ Paso 4: responder al navegador
-		return res.json({ status: "OK" });
-
-	} catch (error) {
-		console.error("Error general en /loginInternet:", error);
-		res.type('text/plain');
-		res.send('Auth: Failed');
-	}
+  } catch (error) {
+    console.error("❌ Error en /loginInternet:", error.message);
+    res.status(500).send('Error: Aruba acknowledge failed.');
+  }
 });
 
 module.exports = app
