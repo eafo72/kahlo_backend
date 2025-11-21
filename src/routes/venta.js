@@ -1219,7 +1219,7 @@ app.post('/crear-admin-cortesia', async (req, res) => {
 
         //caracterizticas del boleto de cortesia
         pagado = 1;
-        status_traspaso = 99;
+        status_traspaso = 98;
         total = 0;
 
         let nombre_completo = nombre_cliente + ' ' + apellidos_cliente;
