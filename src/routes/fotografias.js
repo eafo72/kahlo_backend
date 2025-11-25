@@ -113,19 +113,16 @@ router.get('/imagen/:fileId', async (req, res) => {
 // ============================================================================
 router.post('/milesight-people-count', (req, res) => {
     try {
-        // --- LOG TEMPORAL DE DEBUGGING ---
-        console.log("!!! SOLICITUD DE MILESIGHT RECIBIDA !!!");
+        console.log("--- SOLICITUD DE MILESIGHT RECIBIDA ---");
         console.log("Headers:", req.headers); 
-        console.log("Body:", req.body);
-        // --- FIN LOG TEMPORAL ---
+        // ⚠️ USAR JSON.stringify con indentación para ver el PAYLOAD completo
+        console.log("Body:", JSON.stringify(req.body, null, 4));
+        console.log("--- FIN LOG ---");
         
-        // Responder 200 OK inmediatamente es el objetivo principal de esta prueba.
         res.status(200).json({ status: 'ok', message: 'Test received successfully' });
-        
     } catch (error) {
-        // En un caso de error, siempre registra qué falló
-        console.error('❌ Error en /milesight-people-count Webhook:', error.message);
-        res.status(500).json({ error: 'Error processing test' });
+        console.error('❌ Error:', error.message);
+        res.status(500).json({ error: 'Internal error' });
     }
 });
 
