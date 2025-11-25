@@ -112,63 +112,21 @@ router.get('/imagen/:fileId', async (req, res) => {
 // POST /fotografias/milesight-people-count
 // ============================================================================
 router.post('/milesight-people-count', (req, res) => {
-  try {
-    const data = req.body;
-    
-    // ------------------------------------------
-    // PASO A: VALIDACIÓN DE SEGURIDAD DEL WEBHOOK
-    // ------------------------------------------
-    
-    // NOTA: Asumimos que Milesight envía el secret en el cuerpo (data.secret) o en el header 
-    // (X-Milesight-Secret) o como una firma (X-Milesight-Signature).
-    
-    // **Ajusta esta validación después de ver la primera solicitud de prueba.**
-    const receivedSecret = data.secret || req.headers['x-milesight-secret']; 
-    
-    if (!WEBHOOK_SECRET || receivedSecret !== WEBHOOK_SECRET) {
-        console.warn(`[MILESIGHT WEBHOOK] 🛡️ Alerta: Solicitud con Secret Inválido. Origen: ${req.ip}`);
-        // Responder 403 para indicar un acceso no autorizado.
-        return res.status(403).json({ error: 'Acceso no autorizado al Webhook' });
+    try {
+        // --- LOG TEMPORAL DE DEBUGGING ---
+        console.log("!!! SOLICITUD DE MILESIGHT RECIBIDA !!!");
+        console.log("Headers:", req.headers); 
+        console.log("Body:", req.body);
+        // --- FIN LOG TEMPORAL ---
+        
+        // Responder 200 OK inmediatamente es el objetivo principal de esta prueba.
+        res.status(200).json({ status: 'ok', message: 'Test received successfully' });
+        
+    } catch (error) {
+        // En un caso de error, siempre registra qué falló
+        console.error('❌ Error en /milesight-people-count Webhook:', error.message);
+        res.status(500).json({ error: 'Error processing test' });
     }
-
-    // ------------------------------------------
-    // PASO B: EXTRACCIÓN Y PROCESAMIENTO DE DATOS
-    // ------------------------------------------
-    
-    const deviceId = data.device_eui || 'unknown-device'; 
-    
-    // *** ¡ATENCIÓN! ESTA LÓGICA DE EXTRACCIÓN DEBE AJUSTARSE TRAS EL TEST ***
-    let peopleIn = 0;
-    let peopleOut = 0;
-    
-    // 1. Caso de prueba del Webhook Test (no contiene datos de sensor)
-    if (data.eventType === 'WEBHOOK_TEST') {
-        console.log(`[MILESIGHT WEBHOOK] ✅ Prueba de Conexión Exitosa.`);
-    } 
-    // 2. Caso de datos reales del sensor
-    else if (data.eventType === 'DEVICE_DATA' && data.payload) {
-        // Debes ajustar 'people_in' y 'people_out' según el payload JSON real
-        peopleIn = data.payload.people_in || 0; 
-        peopleOut = data.payload.people_out || 0;
-    }
-    
-    const currentCount = peopleIn - peopleOut; 
-    
-    console.log(`[MILESIGHT WEBHOOK] Datos de ${deviceId}. Conteo: ${currentCount}`);
-
-    // Aquí iría tu lógica final (Guardar en DB, emitir Socket.io, etc.)
-    // ...
-
-    // ------------------------------------------
-    // PASO C: RESPUESTA FINAL
-    // ------------------------------------------
-    // Responder 200 OK para confirmar a Milesight la recepción exitosa.
-    res.status(200).json({ status: 'success', message: 'Webhook processed', currentCount });
-    
-  } catch (error) {
-    console.error('❌ Error en /milesight-people-count Webhook:', error.message);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
 });
 
 // ============================================================================
@@ -201,6 +159,8 @@ router.get('/descargar/:fileId', auth, async (req, res) => {
     res.status(500).send('No se pudo descargar el archivo desde Drive');
   }
 });
+
+
 
 // Exportamos el router y el objeto drive para que index.js pueda montar la ruta y el cron job.
 module.exports = {
