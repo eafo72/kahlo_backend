@@ -148,7 +148,7 @@ const verificarDisponibilidad = async (no_boletos, tourId, fecha, hora) => {
 
     let query = `SELECT 
                         * 
-                        FROM viajeTour_clone 
+                        FROM viajeTour 
                         WHERE CAST(fecha_ida AS DATE) = '${fecha}'
                         AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
                         AND tour_id = ${tourId};`;
@@ -197,7 +197,7 @@ const handleSuccessfulPayment = async (session) => {
         connection = await db.pool.getConnection();
         await connection.beginTransaction();
 
-        const [rows] = await connection.query('SELECT * FROM venta_clone WHERE session_id = ?', [session.id]);
+        const [rows] = await connection.query('SELECT * FROM venta WHERE session_id = ?', [session.id]);
 
         if (rows.length === 0) {
             console.log('No se encontró la venta');
@@ -219,7 +219,7 @@ const handleSuccessfulPayment = async (session) => {
 
         // Marcar como pagado
         await connection.query(
-            'UPDATE venta_clone SET pagado = 1, total = ?, updated_at = ? WHERE id = ?',
+            'UPDATE venta SET pagado = 1, total = ?, updated_at = ? WHERE id = ?',
             [total, fecha, idVenta]
         );
 
@@ -340,7 +340,7 @@ const handleFailedPayment = async (session) => {
         connection = await db.pool.getConnection();
         await connection.beginTransaction();
 
-        const [rows] = await connection.query('SELECT * FROM venta_clone WHERE session_id = ?', [session.id]);
+        const [rows] = await connection.query('SELECT * FROM venta WHERE session_id = ?', [session.id]);
         if (rows.length === 0) {
             console.log('No se encontró la venta');
             await connection.rollback();
@@ -361,13 +361,13 @@ const handleFailedPayment = async (session) => {
         }
 
         await connection.query(
-            'UPDATE venta_clone SET boletos_devueltos = 1, updated_at = ? WHERE id = ?',
+            'UPDATE venta SET boletos_devueltos = 1, updated_at = ? WHERE id = ?',
             [fecha, idVenta]
         );
 
         const boletos = Number(no_boletos) || 0;
         await connection.query(
-            'UPDATE viajeTour_clone SET lugares_disp = lugares_disp + ?, updated_at = ? WHERE id = ?',
+            'UPDATE viajeTour SET lugares_disp = lugares_disp + ?, updated_at = ? WHERE id = ?',
             [boletos, fecha, viajeTourId]
         );
 
@@ -1553,7 +1553,7 @@ app.post('/crear-admin-cortesia', async (req, res) => {
 })
 
 /////////////////////////////////////////////////////////// INICIO STRIPE ///////////////////////////////////////////////////////////
-app.post('/stripe/create-checkout-session', async (req, res) => {
+app.post('/stripe/create-checkout-session-old', async (req, res) => {
     try {
         const { lineItems, customerEmail, successUrl, cancelUrl, metadata } = req.body;
 
@@ -1582,7 +1582,7 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
     }
 });
 
-app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/stripe/webhook-old', express.raw({ type: 'application/json' }), async (req, res) => {
     console.log(' WEBHOOK ENDPOINT ALCANZADO - TIMESTAMP:', new Date().toISOString());
     console.log('');
     console.log('Headers:', req.headers);
@@ -1927,7 +1927,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
     res.json({ received: true });
 });
 
-app.post('/stripe/create-checkout-session-new', async (req, res) => {
+app.post('/stripe/create-checkout-session', async (req, res) => {
     try {
         const { lineItems, customerEmail, successUrl, cancelUrl, metadata } = req.body;
 
@@ -1976,7 +1976,7 @@ app.post('/stripe/create-checkout-session-new', async (req, res) => {
 
             query = `SELECT 
                         * 
-                        FROM viajeTour_clone 
+                        FROM viajeTour 
                         WHERE CAST(fecha_ida AS DATE) = '${fecha_ida_original}'
                         AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
                         AND tour_id = ${tourId};`;
@@ -2001,7 +2001,7 @@ app.post('/stripe/create-checkout-session-new', async (req, res) => {
                 let guia = result.guias;
                 guia = JSON.parse(guia);
 
-                query = `INSERT INTO viajeTour_clone
+                query = `INSERT INTO viajeTour
                             (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
                             VALUES 
                             ('${fecha_ida_formateada}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
@@ -2045,11 +2045,11 @@ app.post('/stripe/create-checkout-session-new', async (req, res) => {
                 billing_address_collection: 'auto',
             },
             {
-                stripeAccount: 'acct_1S5vt43kq9gDlybw', // 👈 clave: ID de la cuenta en este caso la de NUBA
+                stripeAccount: 'acct_1SAz5b3CVvaJXMYX', // 👈 clave: ID de la cuenta conectada osea la cuenta del museo
             }
         );
 
-        query = `INSERT INTO venta_clone
+        query = `INSERT INTO venta
                           (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, session_id) 
                           VALUES 
                           ('V', '${no_boletos}', '${tipos_boletos}', '0', '0', '${fecha}', '0.0', '0', '${fecha_ida_formateada}', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}', '${session.id}')`;
@@ -2073,13 +2073,13 @@ app.post('/stripe/create-checkout-session-new', async (req, res) => {
 
         let id_reservacion = result.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
 
-        query = `UPDATE viajeTour_clone SET
+        query = `UPDATE viajeTour SET
                       lugares_disp = '${lugares_disp}'
                       WHERE id     = ${viajeTourId}`;
 
         await db.pool.query(query);
 
-        query = `UPDATE venta_clone SET
+        query = `UPDATE venta SET
                       id_reservacion = '${id_reservacion}'
                       WHERE id       = ${result.insertId}`;
 
@@ -2087,7 +2087,7 @@ app.post('/stripe/create-checkout-session-new', async (req, res) => {
 
 
         // 4.- guardar en ventas el sessionId de stripe
-        query = `UPDATE venta_clone SET
+        query = `UPDATE venta SET
                       session_id = '${session.id}'
                       WHERE id   = ${result.insertId}`;
 
@@ -2101,10 +2101,10 @@ app.post('/stripe/create-checkout-session-new', async (req, res) => {
     }
 });
 
-app.post('/stripe/webhook-new', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
 
     const sig = req.headers['stripe-signature'];
-    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET_NUBA_TEST;
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
     let event;
 
@@ -2251,7 +2251,7 @@ app.get('/stripe/session-check/:sessionId', async (req, res) => {
 })
 
 // Endpoint para obtener datos de venta por sessionId de Stripe
-app.get('/stripe/session/:sessionId', async (req, res) => {
+app.get('/stripe/session-old/:sessionId', async (req, res) => {
     try {
         let sessionId = req.params.sessionId;
 
@@ -2294,7 +2294,7 @@ app.get('/stripe/session/:sessionId', async (req, res) => {
     }
 })
 
-app.get('/stripe/session-new/:sessionId', async (req, res) => {
+app.get('/stripe/session/:sessionId', async (req, res) => {
     try {
         let sessionId = req.params.sessionId;
 
@@ -2309,7 +2309,7 @@ app.get('/stripe/session-new/:sessionId', async (req, res) => {
                         correo,
                         fecha_compra,
                         created_at
-                        FROM venta_clone
+                        FROM venta
                         WHERE session_id = '${sessionId}';`;
 
         let venta = await db.pool.query(query);
@@ -3167,6 +3167,67 @@ app.post('/modificar-horario', auth, async (req, res) => {
 });
 
 
+app.post('/cancelar-old', auth, async (req, res) => {
+
+    try {
+        const { id_reservacion } = req.body
+
+        if (!id_reservacion) {
+            return res.status(400).json({ msg: 'Faltan parámetros obligatorios.', error: true });
+        }
+
+        let query = `SELECT status_traspaso FROM venta WHERE id_reservacion = ? AND status_traspaso = 99`;
+        let cancelable = await db.pool.query(query, [id_reservacion]);
+        cancelable = cancelable[0];
+
+        if (cancelable.length > 0) {
+            return res.status(500).json({ msg: "La reserva ya fue cancelada anteriormente", error: true });
+        }
+
+        let today = new Date().toLocaleString('es-MX', {
+            timeZone: 'America/Mexico_City',
+            hour12: false // formato 24 horas sin AM/PM
+        });
+        // Ejemplo: "29/09/2025, 23:42:08"
+        let [datePart, timePart] = today.split(', ');
+        let [day, month, year] = datePart.split('/');
+        let [hours, minutes, seconds] = timePart.split(':');
+        month = month.padStart(2, '0');
+        day = day.padStart(2, '0');
+        hours = hours.padStart(2, '0');
+        minutes = minutes.padStart(2, '0');
+        seconds = seconds.padStart(2, '0');
+        let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+        const cancelarQuery = `UPDATE venta AS v
+            INNER JOIN viajeTour AS vt ON v.viajeTour_id = vt.id
+            SET 
+                vt.lugares_disp = LEAST(vt.lugares_disp + v.no_boletos, 12),
+                v.total = 0.00,
+                v.checkin = 0,
+                v.pagado = 0,
+                v.comision = 0.0,
+                v.status_traspaso = 99, 
+                v.id_reservacion = CONCAT(v.id_reservacion, '_ANULADO'),
+                v.updated_at = ?
+            WHERE 
+                v.id_reservacion = ? 
+            `;
+
+        await db.pool.query(cancelarQuery, [fecha, id_reservacion]);
+
+
+        res.status(200).json({
+            error: false,
+            msg: `Reserva ${id_reservacion} cancelada.`
+        });
+
+    } catch (error) {
+        console.error('Error en /cancelar:', error);
+        res.status(500).json({ msg: 'Error interno', error: true, details: error.message });
+    }
+});
+
 app.post('/cancelar', auth, async (req, res) => {
 
     try {
@@ -3228,67 +3289,6 @@ app.post('/cancelar', auth, async (req, res) => {
     }
 });
 
-app.post('/cancelar-new', auth, async (req, res) => {
-
-    try {
-        const { id_reservacion } = req.body
-
-        if (!id_reservacion) {
-            return res.status(400).json({ msg: 'Faltan parámetros obligatorios.', error: true });
-        }
-
-        let query = `SELECT status_traspaso FROM venta_clone WHERE id_reservacion = ? AND status_traspaso = 99`;
-        let cancelable = await db.pool.query(query, [id_reservacion]);
-        cancelable = cancelable[0];
-
-        if (cancelable.length > 0) {
-            return res.status(500).json({ msg: "La reserva ya fue cancelada anteriormente", error: true });
-        }
-
-        let today = new Date().toLocaleString('es-MX', {
-            timeZone: 'America/Mexico_City',
-            hour12: false // formato 24 horas sin AM/PM
-        });
-        // Ejemplo: "29/09/2025, 23:42:08"
-        let [datePart, timePart] = today.split(', ');
-        let [day, month, year] = datePart.split('/');
-        let [hours, minutes, seconds] = timePart.split(':');
-        month = month.padStart(2, '0');
-        day = day.padStart(2, '0');
-        hours = hours.padStart(2, '0');
-        minutes = minutes.padStart(2, '0');
-        seconds = seconds.padStart(2, '0');
-        let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-
-        const cancelarQuery = `UPDATE venta_clone AS v
-            INNER JOIN viajeTour_clone AS vt ON v.viajeTour_id = vt.id
-            SET 
-                vt.lugares_disp = LEAST(vt.lugares_disp + v.no_boletos, 12),
-                v.total = 0.00,
-                v.checkin = 0,
-                v.pagado = 0,
-                v.comision = 0.0,
-                v.status_traspaso = 99, 
-                v.id_reservacion = CONCAT(v.id_reservacion, '_ANULADO'),
-                v.updated_at = ?
-            WHERE 
-                v.id_reservacion = ? 
-            `;
-
-        await db.pool.query(cancelarQuery, [fecha, id_reservacion]);
-
-
-        res.status(200).json({
-            error: false,
-            msg: `Reserva ${id_reservacion} cancelada.`
-        });
-
-    } catch (error) {
-        console.error('Error en /cancelar:', error);
-        res.status(500).json({ msg: 'Error interno', error: true, details: error.message });
-    }
-});
-
 app.post('/stripe/cancelar-compra', async (req, res) => {
 
     const { sessionId } = req.body;
@@ -3305,7 +3305,7 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
         connection = await db.pool.getConnection();
         await connection.beginTransaction();
 
-        const [rows] = await connection.query('SELECT * FROM venta_clone WHERE session_id = ?', [sessionId]);
+        const [rows] = await connection.query('SELECT * FROM venta WHERE session_id = ?', [sessionId]);
         if (rows.length === 0) {
             console.log('No se encontró la venta');
             await connection.rollback();
@@ -3334,13 +3334,13 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
         }
 
         await connection.query(
-            'UPDATE venta_clone SET boletos_devueltos = 1, updated_at = ? WHERE id = ?',
+            'UPDATE venta SET boletos_devueltos = 1, updated_at = ? WHERE id = ?',
             [fecha, idVenta]
         );
 
         const boletos = Number(no_boletos) || 0;
         await connection.query(
-            'UPDATE viajeTour_clone SET lugares_disp = lugares_disp + ?, updated_at = ? WHERE id = ?',
+            'UPDATE viajeTour SET lugares_disp = lugares_disp + ?, updated_at = ? WHERE id = ?',
             [boletos, fecha, viajeTourId]
         );
 
