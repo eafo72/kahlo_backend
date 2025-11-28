@@ -3238,8 +3238,17 @@ app.post('/cancelar', auth, async (req, res) => {
             return res.status(400).json({ msg: 'Faltan parámetros obligatorios.', error: true });
         }
 
-        let query = `SELECT status_traspaso FROM venta WHERE id_reservacion = ? AND status_traspaso = 99`;
+        //revisamos si ya se hizo checkin
+        let query = `SELECT checkin FROM venta WHERE id_reservacion = ? AND checkin != 0`;
         let cancelable = await db.pool.query(query, [id_reservacion]);
+        cancelable = cancelable[0];
+        if (cancelable.length > 0) {
+            return res.status(500).json({ msg: "La reserva ya fue utilizada y no se puede cancelar", error: true });
+        }
+
+        //revisamos si ya fue cancelada anteriormente
+        query = `SELECT status_traspaso FROM venta WHERE id_reservacion = ? AND status_traspaso = 99`;
+        cancelable = await db.pool.query(query, [id_reservacion]);
         cancelable = cancelable[0];
 
         if (cancelable.length > 0) {
