@@ -2041,7 +2041,7 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
                 cancel_url: `${cancelUrl}?session_id={CHECKOUT_SESSION_ID}`,
                 customer_email: customerEmail,
                 metadata: metadata,
-                expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // expira en 10 minutos
+                expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // expira en 30 minutos
                 billing_address_collection: 'auto',
             },
             {
@@ -3229,7 +3229,8 @@ app.post('/cancelar-old', auth, async (req, res) => {
 });
 
 app.post('/cancelar', auth, async (req, res) => {
-
+    //agregar la validacion de checkin > 0 ya no se puede solo si checkin = 0
+    
     try {
         const { id_reservacion } = req.body
 

@@ -162,9 +162,6 @@ module.exports = function generarEmail(data) {
                 <tr>
                   <td style="padding: 20px 40px 20px 40px; text-align: left;">
                     <p style="${styleText()} margin-bottom: 15px;">
-                      Te recomendamos llegar al museo <b style="color:${COLOR_NEUTRO};">30 minutos antes</b> de que inicie tu recorrido.
-                    </p>
-                    <p style="${styleText()} margin-bottom: 15px;">
                       Recuerda que NO hay tolerancia. En caso de retraso, podremos incorporarte en el punto del recorrido donde esté tu grupo o reprogramarte para el siguiente recorrido disponible, sujeto a disponibilidad.
                     </p>
                     <p style="${styleText()} margin-bottom: 15px;">
