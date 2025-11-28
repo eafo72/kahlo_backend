@@ -41,6 +41,7 @@ app.get('/viaje-Tours', async (req, res) => {
     
     CASE
         WHEN v.status_traspaso = 99 THEN 'No Aplica' 
+        WHEN v.status_traspaso = 98 THEN 'Cortesía' 
         WHEN v.session_id IS NULL THEN 'Efectivo'
         ELSE 'Stripe'
     END AS "tipo_compra",
@@ -295,6 +296,7 @@ app.get('/historialByEmpresa/:emId/admin/:adId', async (req, res) => {
     
     CASE
         WHEN v.status_traspaso = 99 THEN 'No Aplica' 
+        WHEN v.status_traspaso = 98 THEN 'Cortesía' 
         WHEN v.session_id IS NULL THEN 'Efectivo'
         ELSE 'Stripe'
     END AS "tipo_compra",
