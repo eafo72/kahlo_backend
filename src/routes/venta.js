@@ -327,6 +327,215 @@ const handleSuccessfulPayment = async (session) => {
     }
 };
 
+const handleSuccessfulPayment_NEW = async (session) => {
+    let fecha = getFecha();
+    let connection;
+
+    try {
+        const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = session.metadata;
+        let fecha_ida_original = session.metadata.fecha_ida;
+        let horaCompleta = normalizarHora(session.metadata.horaCompleta);
+        let id_reservacion = '';
+        let idVenta = '';
+        let viajeTourId = '';
+
+        connection = await db.pool.getConnection();
+        await connection.beginTransaction();
+
+        const [rows] = await connection.query('SELECT * FROM venta_clone WHERE session_id = ?', [session.id]);
+
+        if (rows.length === 0) {
+            console.log('No se encontró la venta');
+            await connection.rollback();
+            connection.release();
+            return;
+        }
+
+        if (rows[0].pagado === 1) {
+            console.log('⚠️ Pago ya procesado, se omite repetición');
+            await connection.rollback();
+            connection.release();
+            return;
+        }
+
+        id_reservacion = rows[0].id_reservacion;
+        idVenta = rows[0].id;
+        viajeTourId = rows[0].viajeTour_id;
+
+        // Marcar como pagado
+        await connection.query(
+            'UPDATE venta_clone SET pagado = 1, total = ?, updated_at = ? WHERE id = ?',
+            [total, fecha, idVenta]
+        );
+
+        await connection.commit();
+        connection.release();
+
+        // ==========================
+        // Aquí seguimos fuera de la transacción
+        // ==========================
+
+        // Parsear tipos_boletos
+        let tiposBoletos = {};
+        try {
+            tiposBoletos = JSON.parse(tipos_boletos);
+            if (typeof tiposBoletos !== 'object' || tiposBoletos === null || Array.isArray(tiposBoletos)) {
+                tiposBoletos = { "General": no_boletos };
+            }
+        } catch (error) {
+            console.error('Error parseando tipos_boletos:', error);
+            tiposBoletos = { "General": no_boletos };
+        }
+
+        // Generar códigos QR para cada boleto
+        const qrCodes = [];
+        let ticketCounter = 1;
+        
+        // Mapeo de tipos de boletos a su letra correspondiente (A, B o C)
+        const tipoToLetter = {
+            tipoA: "A",
+            tipoB: "B",
+            tipoC: "C"
+        };
+
+        // Generar códigos QR para cada boleto
+        for (const [tipo, cantidad] of Object.entries(tiposBoletos)) {
+            const letraTipo = tipoToLetter[tipo] || tipo.replace('tipo', '');
+            
+            for (let i = 1; i <= cantidad; i++) {
+                const qrData = `${id_reservacion}/${ticketCounter}/${letraTipo}`;
+                const qrCodeBuffer = await generateQRCode(qrData);
+                qrCodes.push({
+                    qrCode: qrCodeBuffer.toString('base64')
+                });
+                ticketCounter++;
+            }
+        }
+
+        const precios = { tipoA: 270, tipoB: 130, tipoC: 65 };
+        const nombres = {
+            tipoA: "Entrada General",
+            tipoB: "Ciudadano Mexicano",
+            tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
+        };
+
+        let tiposBoletosArray = Object.entries(tiposBoletos).map(([tipo, cantidad]) => ({
+            nombre: nombres[tipo] || tipo,
+            precio: precios[tipo] || 0,
+            cantidad
+        }));
+
+        let tablaBoletos = `
+            <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
+                <tr style="background-color:#f5f5f5">
+                    <th style="text-align:left">Tipo de boleto</th>
+                    <th style="text-align:right">Precio</th>
+                    <th style="text-align:center">Cantidad</th>
+                    <th style="text-align:right">Subtotal</th>
+                </tr>`;
+        tiposBoletosArray.forEach(tipo => {
+            let subtotal = Number(tipo.precio) * Number(tipo.cantidad);
+            tablaBoletos += `
+                <tr>
+                    <td style="text-align:left">${tipo.nombre}</td>
+                    <td style="text-align:right">$${Number(tipo.precio).toFixed(2)}</td>
+                    <td style="text-align:center">${Number(tipo.cantidad)}</td>
+                    <td style="text-align:right">$${Number(subtotal).toFixed(2)}</td>
+                </tr>`;
+        });
+        tablaBoletos += `
+            <tr>
+                <td colspan="2"></td>
+                <td style="text-align:center; font-weight:bold">Total</td>
+                <td style="text-align:right; font-weight:bold">$${Number(total).toFixed(2)}</td>
+            </tr>
+            </table>`;
+
+        // Preparar attachments para los códigos QR
+        const attachments = qrCodes.map((ticket, index) => ({
+            filename: `boleto_${index + 1}.png`,
+            content: Buffer.from(ticket.qrCode, 'base64'),
+            cid: `ticket_${index + 1}`
+        }));
+
+        // Preparar datos para el template del correo
+        const emailData = {
+            nombre: nombre_cliente,
+            password: null,
+            fecha: fecha_ida_original,
+            horario: horaCompleta,
+            boletos: no_boletos,
+            tablaBoletos,
+            idReservacion: id_reservacion,
+            total,
+            ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+        };
+
+        const emailHtml = emailTemplate(emailData);
+
+        // Enviar correo al administrador
+        await mailer.sendMail({
+            from: process.env.MAIL,
+            to: process.env.MAIL,
+            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            html: emailHtml,
+            attachments: [...attachments]
+        });
+
+        // Enviar correo al cliente con los códigos QR adjuntos
+        await mailer.sendMail({
+            from: process.env.MAIL,
+            to: correo,
+            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            html: emailHtml,
+            attachments: [...attachments]
+        });
+
+        console.log(`✅ Venta procesada exitosamente: ${id_reservacion}, tourId: ${viajeTourId}`);
+    } catch (error) {
+        if (connection) {
+            await connection.rollback();
+            connection.release();
+        }
+        console.error('❌ Error procesando pago en la funcion handleSuccessfulPayment_NEW:', error);
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+
+// Ruta de prueba para handleSuccessfulPayment_NEW
+app.get('/test-payment', async (req, res) => {
+    try {
+        const testSession = {
+            id: 'test_session_123',
+            metadata: {
+                no_boletos: 3,
+                tipos_boletos: JSON.stringify({tipoA: 1, tipoB: 2, tipoC: 0}),
+                nombre_cliente: 'Alex Flores',
+                cliente_id: 26,
+                correo: 'alex@agencianuba.com',
+                tourId: 24,
+                total: '400.00',
+                fecha_ida: '2025-12-15',
+                horaCompleta: '15:00:00'
+            }
+        };
+
+        await handleSuccessfulPayment_NEW(testSession);
+        res.status(200).json({ 
+            success: true, 
+            message: 'Pago de prueba procesado exitosamente' 
+        });
+    } catch (error) {
+        console.error('Error en el endpoint de prueba:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error procesando pago de prueba',
+            error: error.message 
+        });
+    }
+});
 
 const handleFailedPayment = async (session) => {
     let fecha = getFecha();
