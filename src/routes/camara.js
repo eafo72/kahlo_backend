@@ -112,4 +112,32 @@ router.get('/historial', asyncHandler(async (req, res) => {
   res.json(rows);
 }));
 
+router.get('/:fecha', asyncHandler(async (req, res) => {
+  const { fecha } = req.params;
+  
+  // Validar el formato de fecha (YYYY-MM-DD)
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(fecha) || isNaN(Date.parse(fecha))) {
+    return res.status(400).json({ 
+      error: 'Formato de fecha inválido. Use YYYY-MM-DD' 
+    });
+  }
+  
+  const [rows] = await db.pool.query(
+    'SELECT * FROM camara WHERE fecha = ?',
+    [fecha]
+  );
+  
+  if (rows.length === 0) {
+    return res.status(404).json({
+      message: 'No se encontraron registros para la fecha especificada',
+      fecha,
+      entrada: 0,
+      salida: 0
+    });
+  }
+  
+  res.json(rows[0]);
+}));
+
 module.exports = router;
