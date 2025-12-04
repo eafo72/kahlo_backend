@@ -2,13 +2,38 @@ const cron = require('node-cron')
 const express = require('express')
 const path = require('path');
 const helmet = require('helmet');
+const http = require('http');
+const socketIo = require('socket.io');
 
 const customRateLimit = require('./src/middlewares/customRateLimit');
 
 const cors = require('cors');
 
 const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: [
+      'https://agencianuba.com',
+      'http://localhost:4000',
+      'http://localhost:5173'  // Asegúrate de incluir el puerto de tu frontend
+    ],
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+});
 
+// Hacer que io esté disponible en todas las rutas
+app.set('io', io);
+
+// Configuración de eventos de Socket.io
+io.on('connection', (socket) => {
+  console.log('Cliente conectado al socket:', socket.id);
+  
+  socket.on('disconnect', () => {
+    console.log('Cliente desconectado:', socket.id);
+  });
+});
 
 // 1) Middleware de seguridad general
 app.use(helmet());
@@ -126,8 +151,8 @@ app.use((req, res, next) => {
   next();
 });
 
-require('dotenv').config()
-const db = require('./src/config/db')
+require('dotenv').config();
+const db = require('./src/config/db');
 
 async function cronTour(){    
     try {
@@ -188,6 +213,7 @@ const viajeTourRoutes = require('./src/routes/viaje-tour')
 const comentarioRoutes = require('./src/routes/comentario')
 const ventaRoutes = require('./src/routes/venta')
 const photosRoutes = require('./src/routes/photos')
+const camaraRoutes = require('./src/routes/camara')
 
 const fotografiasModule = require('./src/routes/fotografias');
 const fotografiasRoutes = fotografiasModule.router;
@@ -208,11 +234,16 @@ app.use('/venta', ventaRoutes)
 app.use('/photos', photosRoutes)
 app.use('/fotografias', fotografiasRoutes)
 app.use('/mail', mailRoutes)
+app.use('/camara', camaraRoutes)
 
 // Stripe webhook endpoint directo (sin prefijo /venta)
 app.use('/stripe', ventaRoutes)
 
 app.get('/', (req, res) => res.send('KAHLO API'))
 
-app.listen(4000)
-console.log('Server running on port 4000');
+const PORT = process.env.PORT || 4000;
+
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`WebSocket server running on port ${PORT}`);
+});

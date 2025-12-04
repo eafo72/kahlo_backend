@@ -2210,7 +2210,7 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
                 let guia = result.guias;
                 guia = JSON.parse(guia);
 
-                query = `INSERT INTO viajeTour
+                query = `INSERT INTO viajeTour 
                             (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
                             VALUES 
                             ('${fecha_ida_formateada}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
@@ -2254,7 +2254,7 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
                 billing_address_collection: 'auto',
             },
             {
-                stripeAccount: 'acct_1SAz5b3CVvaJXMYX', // 👈 clave: ID de la cuenta conectada osea la cuenta del museo
+                stripeAccount: 'acct_1SAz5b3CVvaJXMYX', // ID de la cuenta conectada osea la cuenta del museo
             }
         );
 
@@ -2337,7 +2337,9 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     handleSuccessfulPayment(session);
 
                 } else {
+                    console.log('');
                     console.log(' No hay metadata en checkout.session.completed');
+                    console.log('');
                     console.log('Session sin metadata:', JSON.stringify(session, null, 2));
                 }
             }
@@ -2349,7 +2351,9 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                 handleSuccessfulPayment(session);
 
             } else {
+                console.log('');
                 console.log(' No hay metadata en checkout.session.completed');
+                console.log('');
                 console.log('Session sin metadata:', JSON.stringify(session, null, 2));
             }
 
@@ -2359,7 +2363,9 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
             if (session.metadata) {
                 handleFailedPayment(session);
             } else {
+                console.log('');
                 console.log(' No hay metadata en checkout.session.completed');
+                console.log('');
                 console.log('Session sin metadata:', JSON.stringify(session, null, 2));
             }
 
@@ -2370,7 +2376,9 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
             if (session.metadata) {
                 handleFailedPayment(session);
             } else {
+                console.log('');
                 console.log(' No hay metadata en checkout.session.completed');
+                console.log('');
                 console.log('Session sin metadata:', JSON.stringify(session, null, 2));
             }
             break;
@@ -2397,7 +2405,6 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
 
 });
-
 
 // Endpoint para obtener datos de venta por sessionId de Stripe
 app.get('/stripe/session-check/:sessionId', async (req, res) => {
@@ -2947,6 +2954,202 @@ app.put('/checkin', async (req, res) => {
             WHERE id_reservacion = ?;
         `;
         await db.pool.query(queryUpdate, [nuevoCheckin, fecha, idReservacion]);
+        const fechaTourLocal = fechaIdaTourCDMX.toLocaleDateString("es-MX");
+        const horaTourLocal = fechaIdaTourCDMX.toLocaleTimeString("es-MX", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: "America/Mexico_City"
+        });
+        res.status(200).json({
+            error: false,
+            msg: "Checkin realizado con éxito",
+            data: {
+                nombre_cliente: venta.nombre_cliente,
+                cantidad: noBoletos,
+                checkin_actual: nuevoCheckin,
+                boletos_restantes: noBoletos - nuevoCheckin,
+                fecha_salida: fechaTourLocal,
+                hora_salida: horaTourLocal + " (hora CDMX)"
+            }
+        });
+    } catch (error) {
+        console.error("Error en el checkin:", error);
+        res.status(500).json({
+            error: true,
+            msg: "Ocurrió un error inesperado. Por favor, intente de nuevo.",
+            details: error.message
+        });
+    }
+});
+
+app.put('/checkin-new', async (req, res) => {
+    try {
+        const { idReservacion } = req.body;
+        if (!idReservacion) {
+            return res.status(400).json({ error: true, msg: "idReservacion es obligatorio." });
+        }
+
+        // Determinar el formato del idReservacion
+        const idParts = idReservacion.split('/');
+        const isNuevoFormato = idParts.length === 3;
+        const baseId = idParts[0]; // Primera parte es el ID base (ej: 4ALX)
+        let numeroBoleto = 1; // Valor por defecto para el formato antiguo
+        let tipoBoleto = 'A'; // Valor por defecto para el formato antiguo
+
+        // Si es el formato nuevo (ID/NUMERO/TIPO)
+        if (isNuevoFormato) {
+            numeroBoleto = parseInt(idParts[1]); // Segunda parte es el número de boleto
+            tipoBoleto = idParts[2]; // Tercera parte es el tipo de boleto (ej: A)
+            
+            if (isNaN(numeroBoleto) || numeroBoleto <= 0) {
+                return res.status(400).json({ 
+                    error: true, 
+                    msg: "Número de boleto inválido. Debe ser un número mayor a 0" 
+                });
+            }
+        }
+
+
+        // Obtener venta + fecha_ida usando solo el ID base
+        const query = `
+            SELECT v.*, vt.fecha_ida
+            FROM venta_clone AS v
+            INNER JOIN viajeTour_clone AS vt ON v.viajeTour_id = vt.id
+            WHERE v.id_reservacion = ?;
+        `;
+        const [ventaResult] = await db.pool.query(query, [baseId]);
+        if (ventaResult.length === 0) {
+            return res.status(404).json({ error: true, msg: "El id de reservacion no existe." });
+        }
+
+        const venta = ventaResult[0];
+
+        const pagado = venta.pagado;
+        const noBoletos = parseInt(venta.no_boletos);
+        const checkinActual = venta.checkin || 0;
+        const fechaIdaTourUTC = new Date(venta.fecha_ida);
+        const now = new Date();
+        const nowCDMX = new Date(now.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
+        const fechaIdaTourCDMX = new Date(fechaIdaTourUTC.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
+
+        //VERIFICAR ESTADO DEL CAMPO PAGADO
+        if (pagado != 1) {
+            return res.status(403).json({
+                error: true,
+                msg: `Boleto no encontrado`
+            });
+        }
+
+        // VERIFICACIÓN DEL DÍA (comentada por ahora)
+        if (nowCDMX.toDateString() !== fechaIdaTourCDMX.toDateString()) {
+            return res.status(403).json({
+                error: true,
+                msg: `Check-in solo permitido el día del tour (${fechaIdaTourCDMX.toLocaleDateString("es-MX")}).`
+            });
+        }
+
+        // --- VERIFICACIÓN DE HORARIO ±140 MINUTOS --- 
+
+        const [horaTourHoras, horaTourMinutos] = fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }).split(":").map(Number);
+        const [ahoraHoras, ahoraMinutos] = nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }).split(":").map(Number);
+        const totalMinutosTour = horaTourHoras * 60 + horaTourMinutos;
+        const totalMinutosAhora = ahoraHoras * 60 + ahoraMinutos;
+        // const diferencia = totalMinutosAhora - totalMinutosTour; // diferencia en minutos
+        /*
+               if (Math.abs(diferencia) > 140) {
+                   return res.status(403).json({
+                       error: true,
+                       msg: "Check-in no válido. El tour está fuera del rango permitido ±120 minutos.",
+                       hora_tour_utc: fechaIdaTourUTC.toISOString(),
+                       hora_tour_cdmx: fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
+                       ahora_utc: now.toISOString(),    
+                       ahora_cdmx: nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
+                       diferencia_minutos: diferencia,
+                       rango_inicio: new Date(fechaIdaTourCDMX.getTime() - 120 * 60000).toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
+                       rango_fin: new Date(fechaIdaTourCDMX.getTime() + 120 * 60000).toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" })
+                   });
+               }
+                   */
+
+        // Verificar que no exceda boletos
+        if (checkinActual >= noBoletos) {
+            return res.status(403).json({
+                error: true,
+                msg: `No se puede hacer checkin. Ya se han registrado ${checkinActual} de ${noBoletos} boletos comprados.`
+            });
+        }
+        const nuevoCheckin = checkinActual + 1;
+        // Guardar fecha actual formateada (CDMX)
+        let today = new Date();
+        let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
+        let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
+        let fecha = date + ' ' + time;
+        // Inicializar variables para la actualización
+        let updateCheckinTiposBoletos = null;
+        
+        // Solo procesar checkin_tipos_boletos si es el formato nuevo
+        if (isNuevoFormato) {
+            // Inicializar la estructura base con todos los tipos de boletos en 0
+            const estructuraBase = {
+                tipoA: 0,
+                tipoB: 0,
+                tipoC: 0
+            };
+
+            // Cargar los datos existentes de checkin_tipos_boletos
+            let checkinTiposBoletos = { ...estructuraBase }; // Inicializar con valores por defecto
+
+            try {
+                if (venta.checkin_tipos_boletos) {
+                    const parsed = JSON.parse(venta.checkin_tipos_boletos);
+                    // Combinar con la estructura base para asegurar que todos los tipos estén presentes
+                    checkinTiposBoletos = { ...estructuraBase, ...parsed };
+                }
+            } catch (e) {
+                console.error('Error al parsear checkin_tipos_boletos:', e);
+                // En caso de error, mantener la estructura base
+            }
+
+            // Verificar que el tipo de boleto sea válido (tipoA, tipoB o tipoC)
+            const tipoBoletoCompleto = `tipo${tipoBoleto.toUpperCase()}`;
+            if (!(tipoBoletoCompleto in checkinTiposBoletos)) {
+                return res.status(400).json({
+                    error: true,
+                    msg: `Tipo de boleto inválido. Debe ser A, B o C`
+                });
+            }
+            
+            // Incrementar el contador para este tipo de boleto
+            checkinTiposBoletos[tipoBoletoCompleto] += 1;
+            updateCheckinTiposBoletos = JSON.stringify(checkinTiposBoletos);
+        }
+
+        // Construir la consulta de actualización dinámicamente según el formato
+        let queryUpdate;
+        let queryParams;
+        
+        if (isNuevoFormato) {
+            queryUpdate = `
+                UPDATE venta_clone
+                SET checkin = ?, 
+                    checkin_tipos_boletos = ?,
+                    updated_at = ?
+                WHERE id_reservacion = ?;
+            `;
+            queryParams = [nuevoCheckin, updateCheckinTiposBoletos, fecha, baseId];
+        } else {
+            // Para el formato antiguo, solo actualizamos el campo checkin
+            queryUpdate = `
+                UPDATE venta_clone
+                SET checkin = ?,
+                    updated_at = ?
+                WHERE id_reservacion = ?;
+            `;
+            queryParams = [nuevoCheckin, fecha, baseId];
+        }
+        
+        await db.pool.query(queryUpdate, queryParams);
         const fechaTourLocal = fechaIdaTourCDMX.toLocaleDateString("es-MX");
         const horaTourLocal = fechaIdaTourCDMX.toLocaleTimeString("es-MX", {
             hour: "2-digit",
