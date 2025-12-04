@@ -29,6 +29,7 @@ router.get('/', asyncHandler(async (req, res) => {
   res.json(rows[0]);
 }));
 
+/*
 // Obtener entradas y salidas por fecha específica
 router.get('/:fecha', [
   param('fecha').isDate().withMessage('Formato de fecha inválido. Use YYYY-MM-DD')
@@ -56,6 +57,7 @@ router.get('/:fecha', [
   
   res.json(rows[0]);
 }));
+*/
 
 // Actualizar conteo de personas (puede ser entrada, salida o ambos)
 router.post('/actualizar', asyncHandler(async (req, res) => {
