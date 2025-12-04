@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
-const { body, param, validationResult } = require('express-validator');
 
 // Middleware para manejar errores
 const asyncHandler = (fn) => (req, res, next) => {
@@ -28,36 +27,6 @@ router.get('/', asyncHandler(async (req, res) => {
   
   res.json(rows[0]);
 }));
-
-/*
-// Obtener entradas y salidas por fecha específica
-router.get('/:fecha', [
-  param('fecha').isDate().withMessage('Formato de fecha inválido. Use YYYY-MM-DD')
-], asyncHandler(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  const { fecha } = req.params;
-  
-  const [rows] = await db.pool.query(
-    'SELECT * FROM camara WHERE fecha = ?',
-    [fecha]
-  );
-  
-  if (rows.length === 0) {
-    return res.status(404).json({
-      message: 'No se encontraron registros para la fecha especificada',
-      fecha,
-      entrada: 0,
-      salida: 0
-    });
-  }
-  
-  res.json(rows[0]);
-}));
-*/
 
 // Actualizar conteo de personas (puede ser entrada, salida o ambos)
 router.post('/actualizar', asyncHandler(async (req, res) => {
