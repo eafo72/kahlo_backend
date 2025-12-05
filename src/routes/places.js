@@ -154,14 +154,31 @@ router.get("/empresa/:place_id", async (req, res) => {
 router.get("/foto/:ref", async (req, res) => {
     try {
         const ref = req.params.ref;
+
         const url = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${ref}&key=${API_KEY}`;
+
         const response = await fetch(url);
-        // Copiar headers tal cual los manda Google
+
+        // 🟢 PASO 1: Agregar el encabezado CORS
+        // Esto le dice al navegador que el contenido es seguro para ser cargado
+        // desde cualquier origen (*), resolviendo el bloqueo.
+        res.setHeader('Access-Control-Allow-Origin', '*'); 
+
+        // 🟡 PASO 2: Copiar headers
+        // Copiar los demás headers tal cual los manda Google, excepto el que
+        // podría estar causando conflicto o ya está establecido.
         response.headers.forEach((value, key) => {
-            res.setHeader(key, value);
+            // Excluimos Content-Type para asegurarnos de que el navegador no lo bloquee por MIME type.
+            // Aunque es mejor dejarlo, a veces el orden de los headers ayuda.
+            // Para ser más seguro, solo aseguramos que el Content-Type se copie, si no existe el de Google.
+            if (key !== 'access-control-allow-origin') {
+                 res.setHeader(key, value);
+            }
         });
+        
         // Y enviar la imagen
         response.body.pipe(res);
+
     } catch (error) {
         console.error("Error en /foto:", error);
         res.status(500).send("Error descargando foto");
