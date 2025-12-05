@@ -154,13 +154,28 @@ router.get("/empresa/:place_id", async (req, res) => {
 router.get("/foto/:ref", async (req, res) => {
     try {
         const ref = req.params.ref;
+        const url = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=1200&photo_reference=${ref}&key=${API_KEY}`;
 
-        const url = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${ref}&key=${API_KEY}`;
-
+        // DESCARGAR FOTO COMO ARRAYBUFFER
         const response = await fetch(url);
 
-        // Pipe directo de Google → cliente
-        response.body.pipe(res);
+        if (!response.ok) {
+            return res.status(500).send("Error obteniendo imagen");
+        }
+
+        // OBTENER BINARY DATA
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        // INTENTAR OBTENER MIME TYPE DE GOOGLE
+        const contentType =
+            response.headers.get("content-type") || "image/jpeg";
+
+        // 🔥 VERY IMPORTANT
+        res.setHeader("Content-Type", contentType);
+
+        // ENVIAR IMAGEN BINARIA
+        return res.send(buffer);
 
     } catch (error) {
         console.error("Error en /foto:", error);
