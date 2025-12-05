@@ -157,27 +157,30 @@ router.get("/foto/:ref", async (req, res) => {
 
         const url = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${ref}&key=${API_KEY}`;
 
-        const response = await fetch(url);
+        // 1. Primera petición a Google (obtiene el 302)
+        const response = await fetch(url, { redirect: "manual" });
 
-        // 🟢 Paso 1: Agregar el encabezado CORS (fundamental)
-        res.setHeader('Access-Control-Allow-Origin', '*'); 
+        if (response.status === 302) {
+            const redirectUrl = response.headers.get("location");
 
-        // 🟡 Paso 2: Copiar headers, EXCLUYENDO los que causan el bloqueo
-        // Esto previene que el navegador bloquee la imagen por políticas de seguridad.
-        response.headers.forEach((value, key) => {
-            const lowerKey = key.toLowerCase();
-            if (lowerKey !== 'x-content-type-options' && 
-                lowerKey !== 'content-security-policy' && 
-                lowerKey !== 'access-control-allow-origin') {
-                res.setHeader(key, value);
-            }
-        });
-        
-        // Y enviar la imagen
-        response.body.pipe(res);
+            // 2. Descargar la IMAGEN REAL desde la URL final
+            const imageResponse = await fetch(redirectUrl);
 
-    } catch (error) {
-        console.error("Error en /foto:", error);
+            // 3. Enviar CORS
+            res.setHeader("Access-Control-Allow-Origin", "*");
+
+            // 4. Content-Type correcto
+            res.setHeader("Content-Type", imageResponse.headers.get("content-type"));
+
+            // 5. Stream hacia el frontend
+            imageResponse.body.pipe(res);
+
+        } else {
+            res.status(400).send("No se pudo obtener la foto");
+        }
+
+    } catch (err) {
+        console.error("Error en /foto:", err);
         res.status(500).send("Error descargando foto");
     }
 });
