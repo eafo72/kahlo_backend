@@ -159,20 +159,17 @@ router.get("/foto/:ref", async (req, res) => {
 
         const response = await fetch(url);
 
-        // 🟢 PASO 1: Agregar el encabezado CORS
-        // Esto le dice al navegador que el contenido es seguro para ser cargado
-        // desde cualquier origen (*), resolviendo el bloqueo.
+        // 🟢 Paso 1: Agregar el encabezado CORS (fundamental)
         res.setHeader('Access-Control-Allow-Origin', '*'); 
 
-        // 🟡 PASO 2: Copiar headers
-        // Copiar los demás headers tal cual los manda Google, excepto el que
-        // podría estar causando conflicto o ya está establecido.
+        // 🟡 Paso 2: Copiar headers, EXCLUYENDO los que causan el bloqueo
+        // Esto previene que el navegador bloquee la imagen por políticas de seguridad.
         response.headers.forEach((value, key) => {
-            // Excluimos Content-Type para asegurarnos de que el navegador no lo bloquee por MIME type.
-            // Aunque es mejor dejarlo, a veces el orden de los headers ayuda.
-            // Para ser más seguro, solo aseguramos que el Content-Type se copie, si no existe el de Google.
-            if (key !== 'access-control-allow-origin') {
-                 res.setHeader(key, value);
+            const lowerKey = key.toLowerCase();
+            if (lowerKey !== 'x-content-type-options' && 
+                lowerKey !== 'content-security-policy' && 
+                lowerKey !== 'access-control-allow-origin') {
+                res.setHeader(key, value);
             }
         });
         
