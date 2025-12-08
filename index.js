@@ -215,6 +215,7 @@ const ventaRoutes = require('./src/routes/venta')
 const photosRoutes = require('./src/routes/photos')
 const camaraRoutes = require('./src/routes/camara')
 const placesRoutes = require('./src/routes/places')
+const translateRoutes = require('./src/routes/traduccion')
 
 const fotografiasModule = require('./src/routes/fotografias');
 const fotografiasRoutes = fotografiasModule.router;
@@ -237,6 +238,7 @@ app.use('/fotografias', fotografiasRoutes)
 app.use('/mail', mailRoutes)
 app.use('/camara', camaraRoutes)
 app.use('/places', placesRoutes)
+app.use('/traductor', translateRoutes)
 
 // Stripe webhook endpoint directo (sin prefijo /venta)
 app.use('/stripe', ventaRoutes)
