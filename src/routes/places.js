@@ -184,6 +184,31 @@ router.get("/foto/:ref", async (req, res) => {
     }
 });
 
+//============================================================================
+// 6) /places/mapa-js → Cargar Google Maps JS sin exponer la API Key
+// ============================================================================
+
+router.get("/mapa-js", async (req, res) => {
+    try {
+        const API_KEY = process.env.GOOGLE_PLACES_API_KEY;
+
+        const url = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&callback=iniciarMapa`;
+
+        const response = await fetch(url);
+        const script = await response.text();
+
+        // Cabecera correcta para JS
+        res.setHeader("Content-Type", "application/javascript");
+
+        // Enviamos el JS tal cual, pero SIN exponer la key al cliente
+        res.send(script);
+
+    } catch (error) {
+        console.error("Error en /places/mapa-js:", error);
+        res.status(500).send("// Error cargando Google Maps JS");
+    }
+});
+
 
 
 module.exports = router;
