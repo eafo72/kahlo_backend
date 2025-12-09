@@ -191,21 +191,25 @@ router.get("/mapa-js", async (req, res) => {
     try {
         const API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 
-        const url = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&callback=iniciarMapa`;
+        const url =
+            `https://maps.googleapis.com/maps/api/js?` +
+            `key=${API_KEY}` +
+            `&callback=iniciarMapa` +
+            `&libraries=geometry`;
 
         const response = await fetch(url);
         const script = await response.text();
 
-        // 🔥 HEADERS para que el navegador permita el JS desde otro dominio
+        // ---- HEADERS PARA PERMITIR EJECUCIÓN CROSS-ORIGIN ----
         res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Access-Control-Allow-Methods", "GET");
         res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-        // Para permitir ejecución cross-origin sin bloqueo
+        // Permitir ejecución segura desde otro dominio
         res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
         res.setHeader("Cross-Origin-Embedder-Policy", "unsafe-none");
 
-        // Asegurar tipo JS
+        // Asegurar que el navegador lo trate como JS
         res.setHeader("Content-Type", "application/javascript; charset=utf-8");
 
         res.send(script);
@@ -215,7 +219,6 @@ router.get("/mapa-js", async (req, res) => {
         res.status(500).send("// Error cargando Google Maps JS");
     }
 });
-
 
 
 module.exports = router;
