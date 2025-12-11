@@ -570,7 +570,7 @@ const handleFailedPayment = async (session) => {
         }
 
         await connection.query(
-            'UPDATE venta SET boletos_devueltos = 1, updated_at = ? WHERE id = ?',
+            'UPDATE venta SET boletos_devueltos = 1, status_traspaso = 99, updated_at = ? WHERE id = ?',
             [fecha, idVenta]
         );
 
@@ -3779,7 +3779,7 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
         }
 
         await connection.query(
-            'UPDATE venta SET boletos_devueltos = 1, updated_at = ? WHERE id = ?',
+            'UPDATE venta SET boletos_devueltos = 1, status_traspaso = 99, updated_at = ? WHERE id = ?',
             [fecha, idVenta]
         );
 
