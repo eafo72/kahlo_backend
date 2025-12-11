@@ -3276,6 +3276,29 @@ app.post('/verificarQr', async (req, res) => {
     }
 });
 
+app.post('/verificarIdReservacion', async (req, res) => {
+    try {
+        const { idReservacion } = req.body;
+
+        // Revisa si existe el número de reservación
+        let query = `SELECT id_reservacion FROM venta WHERE id_reservacion = '${idReservacion}'`;
+        let existReservacion = await db.pool.query(query);
+
+        if (existReservacion[0].length < 1) {
+            return res.status(200).json({ error: true, msg: "El id de reservación no existe." });
+        }
+
+        // Devuelve un mensaje de éxito
+        res.status(200).json({
+            error: false,
+            msg: "El id de reservación es válido."
+        });
+
+    } catch (error) {
+        console.log(error);
+        res.status(400).json({ error: true, details: error });
+    }
+});
 
 
 // Historial de compras por usuario (cliente_id)
