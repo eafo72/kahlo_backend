@@ -99,43 +99,43 @@ const normalizarHora = (horaStr) => {
 };
 
 function separarFechaHora(fecha_comprada) {
-    if (fecha_comprada == null) {
-        throw new Error("fecha_comprada es null o undefined");
-    }
+  if (fecha_comprada == null) {
+    throw new Error("fecha_comprada es null o undefined");
+  }
 
-    // Si es número (timestamp), convertir a Date
-    if (typeof fecha_comprada === "number") {
-        fecha_comprada = new Date(fecha_comprada);
-    }
+  // Si es número (timestamp), convertir a Date
+  if (typeof fecha_comprada === "number") {
+    fecha_comprada = new Date(fecha_comprada);
+  }
 
-    // Si es objeto Date, obtener su ISO (UTC) como base
-    if (fecha_comprada instanceof Date) {
-        // toISOString -> "2025-11-12T09:30:00.000Z"
-        fecha_comprada = fecha_comprada.toISOString();
-    }
+  // Si es objeto Date, obtener su ISO (UTC) como base
+  if (fecha_comprada instanceof Date) {
+    // toISOString -> "2025-11-12T09:30:00.000Z"
+    fecha_comprada = fecha_comprada.toISOString();
+  }
 
-    // A estas alturas asumimos que es string (si no lo es, lanzar)
-    if (typeof fecha_comprada !== "string") {
-        throw new Error("fecha_comprada debe ser string, number o Date");
-    }
+  // A estas alturas asumimos que es string (si no lo es, lanzar)
+  if (typeof fecha_comprada !== "string") {
+    throw new Error("fecha_comprada debe ser string, number o Date");
+  }
 
-    // Normalizar:
-    // 1) cambiar 'T' por espacio
-    // 2) quitar milisegundos (".123") si vienen
-    // 3) quitar zona horaria final: "Z" o "+02:00" o "-0500" etc.
-    // Resultado esperado: "YYYY-MM-DD HH:mm:ss" (si vienen segundos)
-    const limpio = fecha_comprada
-        .replace("T", " ")
-        .replace(/\.\d+/, "")                // quita .000 (milisegundos)
-        .replace(/(Z|[+-]\d{2}:?\d{2})$/, "") // quita Z o +02:00 o -0500
-        .trim();
+  // Normalizar:
+  // 1) cambiar 'T' por espacio
+  // 2) quitar milisegundos (".123") si vienen
+  // 3) quitar zona horaria final: "Z" o "+02:00" o "-0500" etc.
+  // Resultado esperado: "YYYY-MM-DD HH:mm:ss" (si vienen segundos)
+  const limpio = fecha_comprada
+    .replace("T", " ")
+    .replace(/\.\d+/, "")                // quita .000 (milisegundos)
+    .replace(/(Z|[+-]\d{2}:?\d{2})$/, "") // quita Z o +02:00 o -0500
+    .trim();
 
-    // separar por el primer espacio (fecha y resto)
-    const partes = limpio.split(" ");
-    const fecha = partes[0] || "";
-    const hora = partes.slice(1).join(" ") || ""; // en caso de que haya espacio en la zona original
+  // separar por el primer espacio (fecha y resto)
+  const partes = limpio.split(" ");
+  const fecha = partes[0] || "";
+  const hora = partes.slice(1).join(" ") || ""; // en caso de que haya espacio en la zona original
 
-    return { fecha, hora };
+  return { fecha, hora };
 }
 
 const verificarDisponibilidad = async (no_boletos, tourId, fecha, hora) => {
@@ -390,7 +390,7 @@ const handleSuccessfulPayment_NEW = async (session) => {
         // Generar códigos QR para cada boleto
         const qrCodes = [];
         let ticketCounter = 1;
-
+        
         // Mapeo de tipos de boletos a su letra correspondiente (A, B o C)
         const tipoToLetter = {
             tipoA: "A",
@@ -401,7 +401,7 @@ const handleSuccessfulPayment_NEW = async (session) => {
         // Generar códigos QR para cada boleto
         for (const [tipo, cantidad] of Object.entries(tiposBoletos)) {
             const letraTipo = tipoToLetter[tipo] || tipo.replace('tipo', '');
-
+            
             for (let i = 1; i <= cantidad; i++) {
                 const qrData = `${id_reservacion}/${ticketCounter}/${letraTipo}`;
                 const qrCodeBuffer = await generateQRCode(qrData);
@@ -511,7 +511,7 @@ app.get('/test-payment', async (req, res) => {
             id: 'test_session_123',
             metadata: {
                 no_boletos: 3,
-                tipos_boletos: JSON.stringify({ tipoA: 1, tipoB: 2, tipoC: 0 }),
+                tipos_boletos: JSON.stringify({tipoA: 1, tipoB: 2, tipoC: 0}),
                 nombre_cliente: 'Alex Flores',
                 cliente_id: 26,
                 correo: 'alex@agencianuba.com',
@@ -523,16 +523,16 @@ app.get('/test-payment', async (req, res) => {
         };
 
         await handleSuccessfulPayment_NEW(testSession);
-        res.status(200).json({
-            success: true,
-            message: 'Pago de prueba procesado exitosamente'
+        res.status(200).json({ 
+            success: true, 
+            message: 'Pago de prueba procesado exitosamente' 
         });
     } catch (error) {
         console.error('Error en el endpoint de prueba:', error);
-        res.status(500).json({
-            success: false,
+        res.status(500).json({ 
+            success: false, 
             message: 'Error procesando pago de prueba',
-            error: error.message
+            error: error.message 
         });
     }
 });
@@ -3001,11 +3001,11 @@ app.put('/checkin-new', async (req, res) => {
         if (isNuevoFormato) {
             numeroBoleto = parseInt(idParts[1]); // Segunda parte es el número de boleto
             tipoBoleto = idParts[2]; // Tercera parte es el tipo de boleto (ej: A)
-
+            
             if (isNaN(numeroBoleto) || numeroBoleto <= 0) {
-                return res.status(400).json({
-                    error: true,
-                    msg: "Número de boleto inválido. Debe ser un número mayor a 0"
+                return res.status(400).json({ 
+                    error: true, 
+                    msg: "Número de boleto inválido. Debe ser un número mayor a 0" 
                 });
             }
         }
@@ -3087,7 +3087,7 @@ app.put('/checkin-new', async (req, res) => {
         let fecha = date + ' ' + time;
         // Inicializar variables para la actualización
         let updateCheckinTiposBoletos = null;
-
+        
         // Solo procesar checkin_tipos_boletos si es el formato nuevo
         if (isNuevoFormato) {
             // Inicializar la estructura base con todos los tipos de boletos en 0
@@ -3119,7 +3119,7 @@ app.put('/checkin-new', async (req, res) => {
                     msg: `Tipo de boleto inválido. Debe ser A, B o C`
                 });
             }
-
+            
             // Incrementar el contador para este tipo de boleto
             checkinTiposBoletos[tipoBoletoCompleto] += 1;
             updateCheckinTiposBoletos = JSON.stringify(checkinTiposBoletos);
@@ -3128,7 +3128,7 @@ app.put('/checkin-new', async (req, res) => {
         // Construir la consulta de actualización dinámicamente según el formato
         let queryUpdate;
         let queryParams;
-
+        
         if (isNuevoFormato) {
             queryUpdate = `
                 UPDATE venta_clone
@@ -3148,7 +3148,7 @@ app.put('/checkin-new', async (req, res) => {
             `;
             queryParams = [nuevoCheckin, fecha, baseId];
         }
-
+        
         await db.pool.query(queryUpdate, queryParams);
         const fechaTourLocal = fechaIdaTourCDMX.toLocaleDateString("es-MX");
         const horaTourLocal = fechaIdaTourCDMX.toLocaleTimeString("es-MX", {
@@ -3280,15 +3280,17 @@ app.post('/verificarIdReservacion', async (req, res) => {
     try {
         const { idReservacion } = req.body;
 
+       
 
-        // Revisa si existe el número de reservación y si la fecha coincide con hoy
-        let query = `
-  SELECT id_reservacion
-  FROM venta
-  WHERE id_reservacion = ?
-    AND fecha_comprada >= CURDATE()
-    AND fecha_comprada < CURDATE() + INTERVAL 1 DAY
+// Revisa si existe el número de reservación y si la fecha coincide con hoy
+let query = `
+    SELECT id_reservacion 
+    FROM venta 
+    WHERE id_reservacion = '${idReservacion}'
+    AND DATE(fecha_comprada) = CURDATE()
 `;
+
+
 
         let existReservacion = await db.pool.query(query);
 
@@ -3673,7 +3675,7 @@ app.post('/cancelar-old', auth, async (req, res) => {
 
 app.post('/cancelar', auth, async (req, res) => {
     //agregar la validacion de checkin > 0 ya no se puede solo si checkin = 0
-
+    
     try {
         const { id_reservacion } = req.body
 
@@ -3750,7 +3752,7 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
         return res.status(400).json({ msg: 'Faltan parámetros obligatorios.', error: true });
     }
 
-
+    
     let fecha = getFecha();
     let connection;
 
@@ -3774,11 +3776,11 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
         const nombre_cliente = rows[0].nombre_cliente;
         const correo = rows[0].correo;
         const total = rows[0].total;
-
+        
         const fechaHora = separarFechaHora(rows[0].fecha_comprada);
-
-
-
+        
+               
+        
         if (boletos_devueltos === 1) {
             console.log('Boletos ya devueltos');
             await connection.rollback();
@@ -3838,7 +3840,7 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
         if (connection) connection.release();
     }
 
-    res.json({ msj: "✅ Compra cancelada con éxito." });
+    res.json({msj: "✅ Compra cancelada con éxito."});
 
 });
 
