@@ -3283,11 +3283,12 @@ app.post('/verificarIdReservacion', async (req, res) => {
 
         // Revisa si existe el número de reservación y si la fecha coincide con hoy
         let query = `
-            SELECT id_reservacion 
-            FROM venta 
-            WHERE id_reservacion = ? 
-            AND DATE(fecha_comprada) = CURDATE()
-        `;
+  SELECT id_reservacion
+  FROM venta
+  WHERE id_reservacion = ?
+    AND fecha_comprada >= CURDATE()
+    AND fecha_comprada < CURDATE() + INTERVAL 1 DAY
+`;
 
         let existReservacion = await db.pool.query(query);
 
