@@ -12,7 +12,7 @@ const cors = require('cors');
 const app = express();
 
 //app.use(express.json());  OJO no usar porque se descompone el webhook de stripe
-app.use(express.urlencoded({ extended: true }));
+//app.use(express.urlencoded({ extended: true }));  OJO no usar porque se descompone el webhook de stripe
 
 const server = http.createServer(app);
 const io = socketIo(server, {
