@@ -293,7 +293,7 @@ const handleSuccessfulPayment = async (session) => {
             tablaBoletos,
             idReservacion: id_reservacion,
             total,
-            ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+            ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
         };
 
         const emailHtml = emailTemplate(emailData);
@@ -468,7 +468,7 @@ const handleSuccessfulPayment_NEW = async (session) => {
             tablaBoletos,
             idReservacion: id_reservacion,
             total,
-            ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+            ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
         };
 
         const emailHtml = emailTemplate(emailData);
@@ -1372,7 +1372,7 @@ app.post('/crear-admin', async (req, res) => {
             tablaBoletos: tablaBoletos,
             idReservacion: id_reservacion,
             total: total,
-            ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+            ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
         };
 
         // Enviar el correo al admin y al cliente
@@ -1711,7 +1711,7 @@ app.post('/crear-admin-cortesia', async (req, res) => {
             tablaBoletos: tablaBoletos,
             idReservacion: id_reservacion,
             total: total,
-            ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+            ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
         };
 
         // Enviar el correo al admin y al cliente
@@ -2057,7 +2057,7 @@ app.post('/stripe/webhook-old', express.raw({ type: 'application/json' }), async
                         tablaBoletos: tablaBoletos,
                         idReservacion: id_reservacion,
                         total: total,
-                        ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+                        ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
                     };
 
                     // Enviar el correo al admin y al cliente

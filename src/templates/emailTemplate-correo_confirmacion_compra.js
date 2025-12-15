@@ -188,7 +188,6 @@ module.exports = function generarEmail(data) {
                       No responda a este correo. Para cualquier consulta, escriba a <a href="mailto:contacto@museocasakahlo.org" style="color: #1976d2; text-decoration: underline;">contacto@museocasakahlo.org</a>
                     </p>
                     <p style="font-size: 12px; color: ${COLOR_NEUTRO}; margin: 0;">
-                      <a href="#" style="color: #1976d2; text-decoration: underline; margin: 0 5px;">Contacto</a> | 
                       <a href="https://boleto.museocasakahlo.org/pages/terminos.html" target="_blank" style="color: #1976d2; text-decoration: underline; margin: 0 5px;">Términos y Condiciones</a> | 
                       <a href="https://boleto.museocasakahlo.org/pages/aviso-privacidad.html" target="_blank" style="color: #1976d2; text-decoration: underline; margin: 0 5px;">Aviso de Privacidad</a>
                     </p>

@@ -873,7 +873,7 @@ app.post('/crear-admin', async (req, res) => {
             tablaBoletos: tablaBoletos,
             idReservacion: id_reservacion,
             total: total,
-            ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+            ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
         };
 
         // Enviar el correo al admin y al cliente
@@ -1212,7 +1212,7 @@ app.post('/crear-admin-cortesia', async (req, res) => {
             tablaBoletos: tablaBoletos,
             idReservacion: id_reservacion,
             total: total,
-            ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+            ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
         };
 
         // Enviar el correo al admin y al cliente
@@ -1589,7 +1589,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                         tablaBoletos: tablaBoletos,
                         idReservacion: id_reservacion,
                         total: total,
-                        ubicacionUrl: "https://goo.gl/maps/UJu7AtvYN9CTkyCM7"
+                        ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
                     };
 
                     // Enviar el correo al admin y al cliente
