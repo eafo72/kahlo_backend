@@ -2997,6 +2997,83 @@ app.put('/checkin-new', async (req, res) => {
         let numeroBoleto = 1; // Valor por defecto para el formato antiguo
         let tipoBoleto = 'A'; // Valor por defecto para el formato antiguo
 
+
+        
+        // Detectar colaborador
+        const esColaborador = isNuevoFormato && idParts[2].toUpperCase() === 'Z';
+        if (esColaborador) {
+
+            // obtener los numeros del inicio del idReservacion 
+            const match = idReservacion.match(/^(\d+)/);
+
+            if (!match) {
+                return res.status(400).json({
+                    error: true,
+                    msg: "ID de colaborador inválido"
+                });
+            }
+
+            const idColaborador = match[1]; 
+
+            const queryColaborador = `
+                SELECT id, nombres, apellidos, status
+                FROM usuario
+                WHERE id = ? AND status = 1
+                LIMIT 1;
+            `;
+            const [colabResult] = await db.pool.query(queryColaborador, [idColaborador]);
+
+            if (colabResult.length === 0) {
+                return res.status(403).json({
+                    error: true,
+                    msg: "Colaborador no válido o inactivo"
+                });
+            }
+
+            //obtener letras del idReservacion
+            const letrasMatch = idReservacion.match(/^\d+([A-Za-z]+)/);
+            if (!letrasMatch) {
+                return res.status(400).json({
+                    error: true,
+                    msg: "Formato de idReservacion inválido"
+                });
+            }
+
+            const letrasId = letrasMatch[1].toUpperCase(); // ej. "TUBA"
+
+            //obtener letras de nombres y apellidos del colaborador de la BD 
+            // Normalizar texto (por si hay acentos)
+            const normalize = (text) =>
+                    text
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "")
+                    .toUpperCase()
+                    .trim();
+
+            const nombres = normalize(colabResult[0].nombres);
+            const apellidos = normalize(colabResult[0].apellidos);
+
+            const letrasBD = nombres.substring(0, 2) + apellidos.substring(0, 2); // ej. "TUBA"
+
+            //comparar para ver si es el colaborador
+            if (letrasId !== letrasBD) {
+               return res.status(403).json({
+                    error: true,
+                    msg: "El idReservacion no corresponde al colaborador"
+                });
+            }
+
+            // Check-in exitoso para colaborador
+            return res.status(200).json({
+                error: false,
+                msg: "Checkin realizado con éxito",
+                data: {
+                    tipo: "colaborador",
+                    nombre: colabResult[0].nombres
+                }
+            });
+        }
+
         // Si es el formato nuevo (ID/NUMERO/TIPO)
         if (isNuevoFormato) {
             numeroBoleto = parseInt(idParts[1]); // Segunda parte es el número de boleto
@@ -3014,8 +3091,8 @@ app.put('/checkin-new', async (req, res) => {
         // Obtener venta + fecha_ida usando solo el ID base
         const query = `
             SELECT v.*, vt.fecha_ida
-            FROM venta_clone AS v
-            INNER JOIN viajeTour_clone AS vt ON v.viajeTour_id = vt.id
+            FROM venta AS v
+            INNER JOIN viajeTour AS vt ON v.viajeTour_id = vt.id
             WHERE v.id_reservacion = ?;
         `;
         const [ventaResult] = await db.pool.query(query, [baseId]);
@@ -3055,22 +3132,7 @@ app.put('/checkin-new', async (req, res) => {
         const [ahoraHoras, ahoraMinutos] = nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }).split(":").map(Number);
         const totalMinutosTour = horaTourHoras * 60 + horaTourMinutos;
         const totalMinutosAhora = ahoraHoras * 60 + ahoraMinutos;
-        // const diferencia = totalMinutosAhora - totalMinutosTour; // diferencia en minutos
-        /*
-               if (Math.abs(diferencia) > 140) {
-                   return res.status(403).json({
-                       error: true,
-                       msg: "Check-in no válido. El tour está fuera del rango permitido ±120 minutos.",
-                       hora_tour_utc: fechaIdaTourUTC.toISOString(),
-                       hora_tour_cdmx: fechaIdaTourCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
-                       ahora_utc: now.toISOString(),    
-                       ahora_cdmx: nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
-                       diferencia_minutos: diferencia,
-                       rango_inicio: new Date(fechaIdaTourCDMX.getTime() - 120 * 60000).toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }),
-                       rango_fin: new Date(fechaIdaTourCDMX.getTime() + 120 * 60000).toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" })
-                   });
-               }
-                   */
+        
 
         // Verificar que no exceda boletos
         if (checkinActual >= noBoletos) {
@@ -3131,7 +3193,7 @@ app.put('/checkin-new', async (req, res) => {
         
         if (isNuevoFormato) {
             queryUpdate = `
-                UPDATE venta_clone
+                UPDATE venta
                 SET checkin = ?, 
                     checkin_tipos_boletos = ?,
                     updated_at = ?
@@ -3141,7 +3203,7 @@ app.put('/checkin-new', async (req, res) => {
         } else {
             // Para el formato antiguo, solo actualizamos el campo checkin
             queryUpdate = `
-                UPDATE venta_clone
+                UPDATE venta
                 SET checkin = ?,
                     updated_at = ?
                 WHERE id_reservacion = ?;
