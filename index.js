@@ -220,7 +220,7 @@ const photosRoutes = require('./src/routes/photos')
 const camaraRoutes = require('./src/routes/camara')
 const placesRoutes = require('./src/routes/places')
 const translateRoutes = require('./src/routes/traduccion')
-const placesMedanoRouter = require('./routes/placesMedano');
+const placesMedanoRouter = require('./src/routes/placesMedano');
 
 const fotografiasModule = require('./src/routes/fotografias');
 const fotografiasRoutes = fotografiasModule.router;
