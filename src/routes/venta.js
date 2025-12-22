@@ -3069,7 +3069,7 @@ app.put('/checkin-new', async (req, res) => {
                 msg: "Checkin realizado con éxito",
                 data: {
                     tipo: "colaborador",
-                    nombre: colabResult[0].nombres
+                    nombre_colaborador: colabResult[0].nombres
                 }
             });
         }
@@ -3223,6 +3223,7 @@ app.put('/checkin-new', async (req, res) => {
             error: false,
             msg: "Checkin realizado con éxito",
             data: {
+                tipo: "cliente",
                 nombre_cliente: venta.nombre_cliente,
                 cantidad: noBoletos,
                 checkin_actual: nuevoCheckin,
