@@ -2868,7 +2868,7 @@ app.put('/setFecha', async (req, res) => {
 })
 
 
-app.put('/checkin', async (req, res) => {
+app.put('/checkin-old', async (req, res) => {
     try {
         const { idReservacion } = req.body;
         if (!idReservacion) {
@@ -2983,7 +2983,7 @@ app.put('/checkin', async (req, res) => {
     }
 });
 
-app.put('/checkin-new', async (req, res) => {
+app.put('/checkin', async (req, res) => {
     try {
         const { idReservacion } = req.body;
         if (!idReservacion) {
