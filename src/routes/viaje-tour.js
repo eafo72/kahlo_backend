@@ -34,22 +34,24 @@ app.get('/viaje-Tours', async (req, res) => {
     DATE_FORMAT(vt.fecha_ida, '%Y-%m-%d %H:%i:%s') AS "fecha_ida",
     DATE_FORMAT(v.updated_at, '%Y-%m-%d %H:%i:%s')  AS "fecha_visita",
     DATE_FORMAT(v.fecha_compra, '%Y-%m-%d %H:%i:%s') AS "fecha_compra",
-    
-
         
     v.total AS "total_de_compra",
     
     CASE
-        WHEN v.status_traspaso = 99 THEN 'No Aplica' 
-        WHEN v.status_traspaso = 98 THEN 'Cortesía' 
-        WHEN v.session_id IS NULL AND v.metodo_pago = 'Efectivo' THEN 'Efectivo'
-        WHEN v.session_id IS NULL AND v.metodo_pago = 'Pos_tarjeta' THEN 'Pos Tarjeta'
+        WHEN v.status_traspaso = 99 THEN 'No Aplica'
+        WHEN v.status_traspaso = 98 THEN 'Cortesía'
+        WHEN v.session_id IS NULL 
+             AND (v.metodo_pago = 'Efectivo' OR v.metodo_pago IS NULL)
+            THEN 'Efectivo'
+        WHEN v.session_id IS NULL 
+             AND (v.metodo_pago = 'Pos_tarjeta')
+            THEN 'Pos Tarjeta'
         ELSE 'Stripe'
-    END AS "tipo_compra",
+    END AS tipo_compra
     
     CASE
         WHEN v.status_traspaso = 99 THEN 0.00      
-        WHEN v.session_id IS NULL AND v.metodo_pago = 'Efectivo' THEN v.total
+        WHEN v.session_id IS NULL AND v.metodo_pago = 'Efectivo' OR v.session_id IS NULL AND v.metodo_pago IS NULL THEN v.total
         ELSE 0.00
     END AS "cobrado_efectivo",
 
@@ -302,16 +304,20 @@ app.get('/historialByEmpresa/:emId/admin/:adId', async (req, res) => {
     v.total AS "total_de_compra",
     
     CASE
-        WHEN v.status_traspaso = 99 THEN 'No Aplica' 
-        WHEN v.status_traspaso = 98 THEN 'Cortesía' 
-        WHEN v.session_id IS NULL AND v.metodo_pago = 'Efectivo' THEN 'Efectivo'
-        WHEN v.session_id IS NULL AND v.metodo_pago = 'Pos_tarjeta' THEN 'Pos Tarjeta'
+        WHEN v.status_traspaso = 99 THEN 'No Aplica'
+        WHEN v.status_traspaso = 98 THEN 'Cortesía'
+        WHEN v.session_id IS NULL 
+             AND (v.metodo_pago = 'Efectivo' OR v.metodo_pago IS NULL)
+            THEN 'Efectivo'
+        WHEN v.session_id IS NULL 
+             AND (v.metodo_pago = 'Pos_tarjeta')
+            THEN 'Pos Tarjeta'
         ELSE 'Stripe'
-    END AS "tipo_compra",
+    END AS tipo_compra
     
     CASE
         WHEN v.status_traspaso = 99 THEN 0.00      
-        WHEN v.session_id IS NULL AND v.metodo_pago = 'Efectivo' THEN v.total
+        WHEN v.session_id IS NULL AND v.metodo_pago = 'Efectivo' OR v.session_id IS NULL AND v.metodo_pago IS NULL THEN v.total
         ELSE 0.00
     END AS "cobrado_efectivo",
 
