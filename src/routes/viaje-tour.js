@@ -42,15 +42,22 @@ app.get('/viaje-Tours', async (req, res) => {
     CASE
         WHEN v.status_traspaso = 99 THEN 'No Aplica' 
         WHEN v.status_traspaso = 98 THEN 'Cortesía' 
-        WHEN v.session_id IS NULL THEN 'Efectivo'
+        WHEN v.session_id IS NULL AND v.metodo_pago = 'Efectivo' THEN 'Efectivo'
+        WHEN v.session_id IS NULL AND v.metodo_pago = 'Pos_tarjeta' THEN 'Pos Tarjeta'
         ELSE 'Stripe'
     END AS "tipo_compra",
     
     CASE
         WHEN v.status_traspaso = 99 THEN 0.00      
-        WHEN v.session_id IS NULL THEN v.total
+        WHEN v.session_id IS NULL AND v.metodo_pago = 'Efectivo' THEN v.total
         ELSE 0.00
     END AS "cobrado_efectivo",
+
+    CASE
+        WHEN v.status_traspaso = 99 THEN 0.00      
+        WHEN v.session_id IS NULL AND v.metodo_pago = 'Pos_tarjeta' THEN v.total
+        ELSE 0.00
+    END AS "cobrado_tarjeta",
     
     CASE
         WHEN v.status_traspaso = 99 THEN 0.00      
@@ -297,15 +304,22 @@ app.get('/historialByEmpresa/:emId/admin/:adId', async (req, res) => {
     CASE
         WHEN v.status_traspaso = 99 THEN 'No Aplica' 
         WHEN v.status_traspaso = 98 THEN 'Cortesía' 
-        WHEN v.session_id IS NULL THEN 'Efectivo'
+        WHEN v.session_id IS NULL AND v.metodo_pago = 'Efectivo' THEN 'Efectivo'
+        WHEN v.session_id IS NULL AND v.metodo_pago = 'Pos_tarjeta' THEN 'Pos Tarjeta'
         ELSE 'Stripe'
     END AS "tipo_compra",
     
     CASE
         WHEN v.status_traspaso = 99 THEN 0.00      
-        WHEN v.session_id IS NULL THEN v.total
+        WHEN v.session_id IS NULL AND v.metodo_pago = 'Efectivo' THEN v.total
         ELSE 0.00
     END AS "cobrado_efectivo",
+
+    CASE
+        WHEN v.status_traspaso = 99 THEN 0.00      
+        WHEN v.session_id IS NULL AND v.metodo_pago = 'Pos_tarjeta' THEN v.total
+        ELSE 0.00
+    END AS "cobrado_tarjeta",
     
     CASE
         WHEN v.status_traspaso = 99 THEN 0.00      

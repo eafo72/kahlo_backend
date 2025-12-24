@@ -1090,7 +1090,7 @@ app.post('/crear', async (req, res) => {
 
 app.post('/crear-admin', async (req, res) => {
     try {
-        let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
+        let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total, metodo_pago } = req.body
 
         let nombre_completo = nombre_cliente + ' ' + apellidos_cliente;
 
@@ -1248,9 +1248,9 @@ app.post('/crear-admin', async (req, res) => {
         }
 
         query = `INSERT INTO venta 
-                        (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id) 
+                        (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, metodo_pago) 
                         VALUES 
-                        ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '${pagado}', '${fecha}', '0.0', '0', '${fecha_ida}', '${fecha}', '${fecha}', '${nombre_completo}', '${cliente_id}', '${correo}', '${viajeTourId}')`;
+                        ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '${pagado}', '${fecha}', '0.0', '0', '${fecha_ida}', '${fecha}', '${fecha}', '${nombre_completo}', '${cliente_id}', '${correo}', '${viajeTourId}', '${metodo_pago}')`;
 
         let result = await db.pool.query(query);
         result = result[0];
@@ -1424,7 +1424,7 @@ app.post('/crear-admin', async (req, res) => {
 
 app.post('/crear-admin-cortesia', async (req, res) => {
     try {
-        let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
+        let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total, metodo_pago } = req.body
 
         //caracterizticas del boleto de cortesia
         pagado = 1;
@@ -1587,9 +1587,9 @@ app.post('/crear-admin-cortesia', async (req, res) => {
         }
 
         query = `INSERT INTO venta 
-                        (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id) 
+                        (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, metodo_pago) 
                         VALUES 
-                        ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '${pagado}', '${fecha}', '0.0', '${status_traspaso}', '${fecha_ida}', '${fecha}', '${fecha}', '${nombre_completo}', '${cliente_id}', '${correo}', '${viajeTourId}')`;
+                        ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '${pagado}', '${fecha}', '0.0', '${status_traspaso}', '${fecha_ida}', '${fecha}', '${fecha}', '${nombre_completo}', '${cliente_id}', '${correo}', '${viajeTourId}', '${metodo_pago}')`;
 
         let result = await db.pool.query(query);
         result = result[0];
