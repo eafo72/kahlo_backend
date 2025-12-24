@@ -47,7 +47,7 @@ app.get('/viaje-Tours', async (req, res) => {
              AND (v.metodo_pago = 'Pos_tarjeta')
             THEN 'Pos Tarjeta'
         ELSE 'Stripe'
-    END AS tipo_compra
+    END AS tipo_compra,
     
     CASE
         WHEN v.status_traspaso = 99 THEN 0.00      
@@ -55,7 +55,7 @@ app.get('/viaje-Tours', async (req, res) => {
             AND (v.metodo_pago = 'Efectivo' OR v.metodo_pago IS NULL)
             THEN v.total
         ELSE 0.00
-    END AS cobrado_efectivo
+    END AS cobrado_efectivo,
 
     CASE
         WHEN v.status_traspaso = 99 THEN 0.00      
@@ -315,7 +315,7 @@ app.get('/historialByEmpresa/:emId/admin/:adId', async (req, res) => {
              AND (v.metodo_pago = 'Pos_tarjeta')
             THEN 'Pos Tarjeta'
         ELSE 'Stripe'
-    END AS tipo_compra
+    END AS tipo_compra,
     
     CASE
         WHEN v.status_traspaso = 99 THEN 0.00      
@@ -323,7 +323,7 @@ app.get('/historialByEmpresa/:emId/admin/:adId', async (req, res) => {
              AND (v.metodo_pago = 'Efectivo' OR v.metodo_pago IS NULL)
             THEN v.total
         ELSE 0.00
-    END AS cobrado_efectivo
+    END AS cobrado_efectivo,
 
     CASE
         WHEN v.status_traspaso = 99 THEN 0.00      
