@@ -2466,6 +2466,71 @@ app.get('/stripe/session-check/:sessionId', async (req, res) => {
     }
 })
 
+//endpoint de da detalles de un pago apartir de session_id
+app.get('/stripe/session-detail/:sessionId', async (req, res) => {
+   const { sessionId } = req.params;
+
+  try {
+    // 1️⃣ Obtener la sesión de checkout
+    const session = await stripe.checkout.sessions.retrieve(
+      sessionId,
+      {
+        expand: ['payment_intent'],
+      },
+      {
+        stripeAccount: 'acct_1SAz5b3CVvaJXMYX',
+      }
+    );
+
+    if (!session.payment_intent) {
+      return res.status(404).json({
+        ok: false,
+        msg: 'La sesión no tiene PaymentIntent',
+      });
+    }
+
+    const paymentIntent = session.payment_intent;
+
+    // 2️⃣ Obtener el charge (opcional pero muy útil)
+    let charge = null;
+    if (paymentIntent.latest_charge) {
+      charge = await stripe.charges.retrieve(
+        paymentIntent.latest_charge,
+        {
+          stripeAccount: 'acct_1SAz5b3CVvaJXMYX',
+        }
+      );
+    }
+
+    // 3️⃣ Respuesta final
+    res.json({
+      ok: true,
+      session: {
+        id: session.id,
+        amount_total: session.amount_total,
+        currency: session.currency,
+        payment_status: session.payment_status,
+        customer_details: session.customer_details,
+        metadata: session.metadata,
+      },
+      payment_intent: {
+        id: paymentIntent.id,
+        status: paymentIntent.status,
+        amount: paymentIntent.amount,
+        payment_method: paymentIntent.payment_method,
+      },
+      charge,
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+});
+
 // Endpoint para obtener datos de venta por sessionId de Stripe
 app.get('/stripe/session-old/:sessionId', async (req, res) => {
     try {
