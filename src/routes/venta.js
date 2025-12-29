@@ -403,7 +403,7 @@ const handleSuccessfulPayment_NEW = async (session) => {
             const letraTipo = tipoToLetter[tipo] || tipo.replace('tipo', '');
             
             for (let i = 1; i <= cantidad; i++) {
-                const qrData = `${id_reservacion}/${ticketCounter}/${letraTipo}`;
+                const qrData = `${id_reservacion}-${ticketCounter}-${letraTipo}`;
                 const qrCodeBuffer = await generateQRCode(qrData);
                 qrCodes.push({
                     qrCode: qrCodeBuffer.toString('base64')
@@ -3056,7 +3056,7 @@ app.put('/checkin', async (req, res) => {
         }
 
         // Determinar el formato del idReservacion
-        const idParts = idReservacion.split('/');
+        const idParts = idReservacion.split('-');
         const isNuevoFormato = idParts.length === 3;
         const baseId = idParts[0]; // Primera parte es el ID base (ej: 4ALX)
         let numeroBoleto = 1; // Valor por defecto para el formato antiguo
