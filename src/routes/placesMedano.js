@@ -7,9 +7,9 @@ const fetch = require("node-fetch");
 const API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 
 // 📍 CONSTANTES GEOGRÁFICAS: DISTRITO MEDANO (Centro aprox: Mango Deck / The Office)
-const MEDANO_LAT = "22.886800";
-const MEDANO_LNG = "-109.906500";
-const MEDANO_RADIUS = "1200"; // 1.2km para cubrir toda la franja
+const MEDANO_LAT = "22.8895359";
+const MEDANO_LNG = "-109.9035611";
+const MEDANO_RADIUS = "2000"; // 1.2km para cubrir toda la franja
 
 // ============================================================================
 // 1) /places-medano/lugares → Búsqueda manual
