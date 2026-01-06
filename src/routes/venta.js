@@ -9,7 +9,18 @@ const mailer = require('../controller/mailController')
 const helperName = require('../helpers/name')
 const QRCode = require('qrcode')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const emailTemplate = require('../templates/emailTemplate-correo_confirmacion_compra');
+// Función para cargar el template de correo según el idioma
+function getEmailTemplate(lang = 'es') {
+  try {
+    return require(`../templates/emailTemplate-correo_confirmacion_compra-${lang}`);
+  } catch (error) {
+    // Si el template del idioma no existe, cargar el español por defecto
+    return require('../templates/emailTemplate-correo_confirmacion_compra');
+  }
+}
+
+// Template por defecto (español)
+const emailTemplate = getEmailTemplate();
 
 function generarPassword(longitud = 10) {
     const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_-+=<>?';
@@ -230,6 +241,52 @@ const handleSuccessfulPayment = async (session) => {
         // Aquí seguimos fuera de la transacción
         // ==========================
 
+        // Obtener el idioma de los metadatos de la sesión o usar español por defecto
+        const lang = session.metadata?.language || 'es';
+
+        // Textos traducidos
+        const i18n = {
+            es: {
+                ticketType: "Tipo de boleto",
+                price: "Precio",
+                quantity: "Cantidad",
+                subtotal: "Subtotal",
+                total: "Total",
+                ticketTypes: {
+                    tipoA: "Entrada General",
+                    tipoB: "Ciudadano Mexicano",
+                    tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
+                }
+            },
+            en: {
+                ticketType: "Ticket Type",
+                price: "Price",
+                quantity: "Quantity",
+                subtotal: "Subtotal",
+                total: "Total",
+                ticketTypes: {
+                    tipoA: "General Admission",
+                    tipoB: "Mexican Citizen",
+                    tipoC: "Student / Senior / Child (-12) / With Disabilities"
+                }
+            },
+            fr: {
+                ticketType: "Type de billet",
+                price: "Prix",
+                quantity: "Quantité",
+                subtotal: "Sous-total",
+                total: "Total",
+                ticketTypes: {
+                    tipoA: "Entrée générale",
+                    tipoB: "Citoyen mexicain",
+                    tipoC: "Étudiant / Senior / Enfant (-12) / Personnes handicapées"
+                }
+            }
+        };
+
+        // Usar el diccionario de idiomas o español por defecto
+        const t = i18n[lang] || i18n.es;
+
         // Generamos el QR
         const qrCodeBuffer = await generateQRCode(id_reservacion);
 
@@ -238,22 +295,17 @@ const handleSuccessfulPayment = async (session) => {
         try {
             tiposBoletos = JSON.parse(tipos_boletos);
             if (typeof tiposBoletos !== 'object' || tiposBoletos === null || Array.isArray(tiposBoletos)) {
-                tiposBoletos = { "General": no_boletos };
+                tiposBoletos = { "tipoA": no_boletos }; // Usar tipoA como valor por defecto
             }
         } catch (error) {
             console.error('Error parseando tipos_boletos:', error);
-            tiposBoletos = { "General": no_boletos };
+            tiposBoletos = { "tipoA": no_boletos }; // Usar tipoA como valor por defecto
         }
 
         const precios = { tipoA: 270, tipoB: 130, tipoC: 65 };
-        const nombres = {
-            tipoA: "Entrada General",
-            tipoB: "Ciudadano Mexicano",
-            tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
-        };
 
         let tiposBoletosArray = Object.entries(tiposBoletos).map(([tipo, cantidad]) => ({
-            nombre: nombres[tipo] || tipo,
+            nombre: t.ticketTypes[tipo] || tipo,
             precio: precios[tipo] || 0,
             cantidad
         }));
@@ -261,11 +313,12 @@ const handleSuccessfulPayment = async (session) => {
         let tablaBoletos = `
             <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
                 <tr style="background-color:#f5f5f5">
-                    <th style="text-align:left">Tipo de boleto</th>
-                    <th style="text-align:right">Precio</th>
-                    <th style="text-align:center">Cantidad</th>
-                    <th style="text-align:right">Subtotal</th>
+                    <th style="text-align:left">${t.ticketType}</th>
+                    <th style="text-align:right">${t.price}</th>
+                    <th style="text-align:center">${t.quantity}</th>
+                    <th style="text-align:right">${t.subtotal}</th>
                 </tr>`;
+
         tiposBoletosArray.forEach(tipo => {
             let subtotal = Number(tipo.precio) * Number(tipo.cantidad);
             tablaBoletos += `
@@ -276,10 +329,11 @@ const handleSuccessfulPayment = async (session) => {
                     <td style="text-align:right">$${Number(subtotal).toFixed(2)}</td>
                 </tr>`;
         });
+
         tablaBoletos += `
             <tr>
                 <td colspan="2"></td>
-                <td style="text-align:center; font-weight:bold">Total</td>
+                <td style="text-align:center; font-weight:bold">${t.total}</td>
                 <td style="text-align:right; font-weight:bold">$${Number(total).toFixed(2)}</td>
             </tr>
             </table>`;
@@ -296,21 +350,31 @@ const handleSuccessfulPayment = async (session) => {
             ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
         };
 
-        const emailHtml = emailTemplate(emailData);
+        
+        const emailHtml = getEmailTemplate(lang)(emailData);
 
         // Enviar correos
         await mailer.sendMail({
             from: process.env.MAIL,
             to: process.env.MAIL,
-            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            subject: lang === 'en' 
+                ? "Purchase Confirmation - Casa Kahlo Museum!" 
+                : lang === 'fr' 
+                    ? "Confirmation d'achat - Musée Casa Kahlo!"
+                    : "¡Confirmación de compra - Museo Casa Kahlo!",
             html: emailHtml,
             attachments: [{ filename: 'qr.png', content: qrCodeBuffer, cid: 'qrImage' }]
         });
 
+        // Enviar correo al cliente con el idioma correspondiente
         await mailer.sendMail({
             from: process.env.MAIL,
             to: correo,
-            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            subject: lang === 'en' 
+                ? "Purchase Confirmation - Casa Kahlo Museum!" 
+                : lang === 'fr' 
+                    ? "Confirmation d'achat - Musée Casa Kahlo!"
+                    : "¡Confirmación de compra - Museo Casa Kahlo!",
             html: emailHtml,
             attachments: [{ filename: 'qr.png', content: qrCodeBuffer, cid: 'qrImage' }]
         });
@@ -338,6 +402,52 @@ const handleSuccessfulPayment_NEW = async (session) => {
         let id_reservacion = '';
         let idVenta = '';
         let viajeTourId = '';
+        
+        // Obtener el idioma de los metadatos de la sesión o usar español por defecto
+        const lang = session.metadata?.language || 'es';
+
+        // Textos traducidos
+        const i18n = {
+            es: {
+                ticketType: "Tipo de boleto",
+                price: "Precio",
+                quantity: "Cantidad",
+                subtotal: "Subtotal",
+                total: "Total",
+                ticketTypes: {
+                    tipoA: "Entrada General",
+                    tipoB: "Ciudadano Mexicano",
+                    tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
+                }
+            },
+            en: {
+                ticketType: "Ticket Type",
+                price: "Price",
+                quantity: "Quantity",
+                subtotal: "Subtotal",
+                total: "Total",
+                ticketTypes: {
+                    tipoA: "General Admission",
+                    tipoB: "Mexican Citizen",
+                    tipoC: "Student / Senior / Child (-12) / With Disabilities"
+                }
+            },
+            fr: {
+                ticketType: "Type de billet",
+                price: "Prix",
+                quantity: "Quantité",
+                subtotal: "Sous-total",
+                total: "Total",
+                ticketTypes: {
+                    tipoA: "Entrée générale",
+                    tipoB: "Citoyen mexicain",
+                    tipoC: "Étudiant / Senior / Enfant (-12) / Personnes handicapées"
+                }
+            }
+        };
+
+        // Usar el diccionario de idiomas o español por defecto
+        const t = i18n[lang] || i18n.es;
 
         connection = await db.pool.getConnection();
         await connection.beginTransaction();
@@ -413,14 +523,9 @@ const handleSuccessfulPayment_NEW = async (session) => {
         }
 
         const precios = { tipoA: 270, tipoB: 130, tipoC: 65 };
-        const nombres = {
-            tipoA: "Entrada General",
-            tipoB: "Ciudadano Mexicano",
-            tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
-        };
 
         let tiposBoletosArray = Object.entries(tiposBoletos).map(([tipo, cantidad]) => ({
-            nombre: nombres[tipo] || tipo,
+            nombre: t.ticketTypes[tipo] || tipo,
             precio: precios[tipo] || 0,
             cantidad
         }));
@@ -428,10 +533,10 @@ const handleSuccessfulPayment_NEW = async (session) => {
         let tablaBoletos = `
             <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
                 <tr style="background-color:#f5f5f5">
-                    <th style="text-align:left">Tipo de boleto</th>
-                    <th style="text-align:right">Precio</th>
-                    <th style="text-align:center">Cantidad</th>
-                    <th style="text-align:right">Subtotal</th>
+                    <th style="text-align:left">${t.ticketType}</th>
+                    <th style="text-align:right">${t.price}</th>
+                    <th style="text-align:center">${t.quantity}</th>
+                    <th style="text-align:right">${t.subtotal}</th>
                 </tr>`;
         tiposBoletosArray.forEach(tipo => {
             let subtotal = Number(tipo.precio) * Number(tipo.cantidad);
@@ -446,7 +551,7 @@ const handleSuccessfulPayment_NEW = async (session) => {
         tablaBoletos += `
             <tr>
                 <td colspan="2"></td>
-                <td style="text-align:center; font-weight:bold">Total</td>
+                <td style="text-align:center; font-weight:bold">${t.total}</td>
                 <td style="text-align:right; font-weight:bold">$${Number(total).toFixed(2)}</td>
             </tr>
             </table>`;
@@ -470,25 +575,33 @@ const handleSuccessfulPayment_NEW = async (session) => {
             total,
             ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
         };
-
-        const emailHtml = emailTemplate(emailData);
+        
+        const emailHtml = getEmailTemplate(lang)(emailData);
 
         // Enviar correo al administrador
         await mailer.sendMail({
             from: process.env.MAIL,
             to: process.env.MAIL,
-            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            subject: lang === 'en' 
+                ? "Purchase Confirmation - Casa Kahlo Museum!" 
+                : lang === 'fr' 
+                    ? "Confirmation d'achat - Musée Casa Kahlo!"
+                    : "¡Confirmación de compra - Museo Casa Kahlo!",
             html: emailHtml,
-            attachments: [...attachments]
+            attachments: attachments
         });
 
-        // Enviar correo al cliente con los códigos QR adjuntos
+        // Enviar correo al cliente
         await mailer.sendMail({
             from: process.env.MAIL,
             to: correo,
-            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            subject: lang === 'en' 
+                ? "Purchase Confirmation - Casa Kahlo Museum!" 
+                : lang === 'fr' 
+                    ? "Confirmation d'achat - Musée Casa Kahlo!"
+                    : "¡Confirmación de compra - Museo Casa Kahlo!",
             html: emailHtml,
-            attachments: [...attachments]
+            attachments: attachments
         });
 
         console.log(`✅ Venta procesada exitosamente: ${id_reservacion}, tourId: ${viajeTourId}`);
