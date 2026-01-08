@@ -696,57 +696,50 @@ app.post('/google-login', async (req, res) => {
 // 🚀 LOGIN PARA PORTAL CAUTIVO (ARUBA) - EMAIL Y GOOGLE LOGIN
 // ==========================================================
 
+// users.js - Endpoint exclusivo Portal Cautivo
 app.post('/loginInternet', async (req, res) => {
   try {
-    const { email, password, id_token, aruba_auth_url } = req.body;
+    const { email, password, id_token } = req.body;
 
-    if (!aruba_auth_url) {
-      console.error("❌ Falta aruba_auth_url");
-      return res.status(400).json({ status: "ERROR", msg: "Missing Aruba auth URL" });
-    }
-
-    // --- OPCIÓN 1: LOGIN NORMAL ---
+    // LOGIN NORMAL
     if (email && password) {
-      const [userRows] = await db.pool.query(
+      const [rows] = await db.pool.query(
         `SELECT * FROM usuario WHERE correo = ? AND status = 1`,
         [email]
       );
-      if (userRows.length === 0) return res.json({ status: "DENY" });
-      const user = userRows[0];
-      const passCorrecto = await bcryptjs.compare(password, user.password);
-      if (!passCorrecto) return res.json({ status: "DENY" });
+
+      if (rows.length === 0) {
+        return res.status(401).json({ success: false, msg: 'Usuario no encontrado' });
+      }
+
+      const user = rows[0];
+      const ok = await bcryptjs.compare(password, user.password);
+
+      if (!ok) {
+        return res.status(401).json({ success: false, msg: 'Contraseña incorrecta' });
+      }
+
+      return res.json({ success: true });
     }
 
-    // --- OPCIÓN 2: LOGIN CON GOOGLE ---
+    // LOGIN GOOGLE
     if (id_token) {
       const ticket = await googleClient.verifyIdToken({
         idToken: id_token,
         audience: '418513888701-ii4jt41t9iv0um2v2b1mjt037efnucae.apps.googleusercontent.com',
       });
+
       const payload = ticket.getPayload();
-      const emailGoogle = payload.email;
-      const nombres = payload.given_name || '';
-      const apellidos = payload.family_name || '';
-      const [rows] = await db.pool.query(`SELECT * FROM usuario WHERE correo = ?`, [emailGoogle]);
-      if (rows.length === 0) {
-        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-        await db.pool.query(`
-          INSERT INTO usuario (nombres, apellidos, correo, password, isClient, status, created_at, updated_at)
-          VALUES (?, ?, ?, NULL, 1, 1, ?, ?)
-        `, [nombres, apellidos, emailGoogle, now, now]);
-      }
+      // Aquí puedes insertar o validar usuario si quieres
+
+      return res.json({ success: true });
     }
 
-    // ✅ Paso 3: Enviar el acknowledge al portal Aruba Instant On
-    const finalUrl = `${aruba_auth_url}&auth_result=InstantOn.Acknowledge`;
-    await axios.get(finalUrl, { timeout: 3000 });
+    return res.status(400).json({ success: false, msg: 'Datos insuficientes' });
 
-    console.log("✅ Cliente liberado mediante Aruba Instant On");
-    return res.json({ status: "OK" });
-
-  } catch (error) {
-    console.error("❌ Error en /loginInternet:", error.message);
-    res.status(500).send('Error: Aruba acknowledge failed.');
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, msg: 'Error servidor' });
   }
 });
 
