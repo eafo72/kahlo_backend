@@ -357,7 +357,6 @@ const handleSuccessfulPayment = async (session) => {
         await mailer.sendMail({
             from: process.env.MAIL,
             to: process.env.MAIL,
-            bcc: 'alex@agencianuba.com',
             subject: lang === 'en' 
                 ? "Purchase Confirmation - Casa Kahlo Museum!" 
                 : lang === 'fr' 
@@ -371,7 +370,6 @@ const handleSuccessfulPayment = async (session) => {
         await mailer.sendMail({
             from: process.env.MAIL,
             to: correo,
-            bcc: 'alex@agencianuba.com',
             subject: lang === 'en' 
                 ? "Purchase Confirmation - Casa Kahlo Museum!" 
                 : lang === 'fr' 
@@ -584,7 +582,6 @@ const handleSuccessfulPayment_NEW = async (session) => {
         await mailer.sendMail({
             from: process.env.MAIL,
             to: process.env.MAIL,
-            bcc: 'alex@agencianuba.com',
             subject: lang === 'en' 
                 ? "Purchase Confirmation - Casa Kahlo Museum!" 
                 : lang === 'fr' 
@@ -598,7 +595,6 @@ const handleSuccessfulPayment_NEW = async (session) => {
         await mailer.sendMail({
             from: process.env.MAIL,
             to: correo,
-            bcc: 'alex@agencianuba.com',
             subject: lang === 'en' 
                 ? "Purchase Confirmation - Casa Kahlo Museum!" 
                 : lang === 'fr' 
