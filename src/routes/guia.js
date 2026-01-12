@@ -80,7 +80,7 @@ app.get('/obtener/:id', async (req, res) => {
 
 app.post('/crear', imageController.upload, async (req, res) => {
     try {
-        let { nombres, apellidos, telefono, correo, password, empresa_id } = req.body
+        let { nombres, apellidos, telefono, correo, password, empresa_id, tipoColaborador } = req.body
 
         let errors = Array();
 
@@ -94,11 +94,15 @@ app.post('/crear', imageController.upload, async (req, res) => {
             errors.push({ msg: "El campo correo debe de contener un valor" });
         }
         if (!password) {
-			errors.push({ msg: "El campo password debe de contener un valor" });
-		}
+            errors.push({ msg: "El campo password debe de contener un valor" });
+        }
         if (!empresa_id) {
             errors.push({ msg: "El campo empresa_id debe de contener un valor" });
         }
+        if (!tipoColaborador) {
+            tipoColaborador = 'Colaborador';
+        }
+
         if (!telefono) {
             telefono = null;
         }
@@ -129,7 +133,7 @@ app.post('/crear', imageController.upload, async (req, res) => {
                 });
         }
 
-        
+
         const salt = await bcryptjs.genSalt(10);
         const hashedPassword = await bcryptjs.hash(password, salt);
 
@@ -159,14 +163,15 @@ app.post('/crear', imageController.upload, async (req, res) => {
         });
 
         let result = await response.json();
-        
+
         result.forEach(element => {
             if (element.error) {
                 return res.status(400).json({ error: true, msg: "No se agregaron las fotos, intenterlo nuevamente", details: element.msg })
             }
         });
 
-        query = `INSERT INTO usuario 
+        if (tipoColaborador = 'Colaborador') {
+            query = `INSERT INTO usuario 
                         (nombres, apellidos, 
                         telefono, correo, password,
                         isGuia, foto, 
@@ -178,6 +183,24 @@ app.post('/crear', imageController.upload, async (req, res) => {
                         '${hashedPassword}', 1, '${foto1}', 
                         '${identificacion1}', '${empresa_id}',
                         '${fecha}', '${fecha}')`;
+
+        } else if (tipoColaborador = 'Especialista') {
+            query = `INSERT INTO usuario 
+                        (nombres, apellidos, 
+                        telefono, correo, password,
+                        isSpecialist, foto, 
+                        identificacion, empresa_id,
+                        created_at, updated_at) 
+                        VALUES 
+                        ('${nombres}', '${apellidos}', 
+                        '${telefono}','${correo}', 
+                        '${hashedPassword}', 1, '${foto1}', 
+                        '${identificacion1}', '${empresa_id}',
+                        '${fecha}', '${fecha}')`;
+
+        }
+
+
 
         result = await db.pool.query(query);
         result = result[0];
@@ -256,12 +279,12 @@ app.put('/set', imageController.upload, async (req, res) => {
             formdata.append('foto', file);
             formdata.append('nombre_foto', tituloFoto);
 
-            query =  query + `foto = '${foto1}',`;
+            query = query + `foto = '${foto1}',`;
 
-        } 
+        }
 
-        if(req.files['identificacion']){
-            
+        if (req.files['identificacion']) {
+
             noFotos++;
             let tituloIdentificacion = `${date}-${req.files['identificacion'][0].originalname}`;
             let identificacion1 = `${process.env.URLFRONT}/images/guias/${tituloIdentificacion}`;
@@ -271,11 +294,11 @@ app.put('/set', imageController.upload, async (req, res) => {
             formdata.append('identificacion', file2);
             formdata.append('nombre_identificacion', tituloIdentificacion);
 
-            query =  query + `identificacion  = '${identificacion1}',`;
-        
+            query = query + `identificacion  = '${identificacion1}',`;
+
         }
-        
-        if(req.files['foto'] || req.files['identificacion']) {
+
+        if (req.files['foto'] || req.files['identificacion']) {
 
             let response = await fetch(`${process.env.URLFRONT}/images/guias/api_guias_base64.php`, {
                 method: 'POST',
@@ -283,7 +306,7 @@ app.put('/set', imageController.upload, async (req, res) => {
             });
 
             let result = await response.json();
-            
+
             let noErrors = 0;
 
             result.forEach(element => {
@@ -293,19 +316,19 @@ app.put('/set', imageController.upload, async (req, res) => {
                 }
             });
 
-            if(noErrors >= 4 || (noFotos >= 2 && noErrors >= 2) || noErrors == 1){
-                return res.status(400).json({ error: true, msg: "No se agregaron las fotos, intenterlo nuevamente"})
+            if (noErrors >= 4 || (noFotos >= 2 && noErrors >= 2) || noErrors == 1) {
+                return res.status(400).json({ error: true, msg: "No se agregaron las fotos, intenterlo nuevamente" })
             }
-            query =  query + 
-                        `empresa_id      = '${empresa_id}', 
+            query = query +
+                `empresa_id      = '${empresa_id}', 
                         updated_at       = '${fecha}'
                         WHERE id         = ${id}`;
 
         }
         else {
 
-            query = query + 
-                        `empresa_id      = '${empresa_id}', 
+            query = query +
+                `empresa_id      = '${empresa_id}', 
                         updated_at       = '${fecha}'
                         WHERE id         = ${id}`;
 
@@ -322,70 +345,70 @@ app.put('/set', imageController.upload, async (req, res) => {
 })
 
 app.put('/setBasicData', async (req, res) => {
-	try {
-		let { id, nombres, apellidos, password, telefono } = req.body
+    try {
+        let { id, nombres, apellidos, password, telefono } = req.body
 
-		let errors = Array();
+        let errors = Array();
 
-		if (!id) {
-			errors.push({ msg: "El campo id debe de contener un valor valido" });
-		}
-		if (!nombres) {
-			errors.push({ msg: "El campo nombres debe de contener un valor" });
-		}
-		if (!apellidos) {
-			errors.push({ msg: "El campo apellidos debe de contener un valor" });
-		}
-		if (!telefono) {
-			telefono = null;
-		}
+        if (!id) {
+            errors.push({ msg: "El campo id debe de contener un valor valido" });
+        }
+        if (!nombres) {
+            errors.push({ msg: "El campo nombres debe de contener un valor" });
+        }
+        if (!apellidos) {
+            errors.push({ msg: "El campo apellidos debe de contener un valor" });
+        }
+        if (!telefono) {
+            telefono = null;
+        }
 
-		if (errors.length >= 1) {
+        if (errors.length >= 1) {
 
-			return res.status(400)
-				.json({
-					msg: 'Errores en los parametros',
-					error: true,
-					details: errors
-				});
+            return res.status(400)
+                .json({
+                    msg: 'Errores en los parametros',
+                    error: true,
+                    details: errors
+                });
 
-		}
+        }
 
-		let today = new Date();
-		let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
-		let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
-		let fecha = date + ' ' + time;
-		let query = ``;
+        let today = new Date();
+        let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
+        let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
+        let fecha = date + ' ' + time;
+        let query = ``;
 
-		if (password) {
-			const salt = await bcryptjs.genSalt(10);
-			const hashedPassword = await bcryptjs.hash(password, salt);
+        if (password) {
+            const salt = await bcryptjs.genSalt(10);
+            const hashedPassword = await bcryptjs.hash(password, salt);
 
-			query = `UPDATE usuario  SET
+            query = `UPDATE usuario  SET
                         nombres              = '${nombres}', 
                         apellidos            = '${apellidos}',
                         telefono             = '${telefono}', 
 						password             = '${hashedPassword}',
                         updated_at           = '${fecha}'
                         WHERE id             = ${id}`;
-		} else {
-			query = `UPDATE usuario  SET
+        } else {
+            query = `UPDATE usuario  SET
                         nombres              = '${nombres}', 
                         apellidos            = '${apellidos}',
                         telefono             = '${telefono}', 
                         updated_at           = '${fecha}'
                         WHERE id             = ${id}`;
-		}
+        }
 
-		let result = await db.pool.query(query);
-		result = result[0];
+        let result = await db.pool.query(query);
+        result = result[0];
 
 
-		res.status(200).json({ error: false, msg: "Registro actualizado con exito" })
+        res.status(200).json({ error: false, msg: "Registro actualizado con exito" })
 
-	} catch (error) {
-		res.status(400).json({ error: true, details: error })
-	}
+    } catch (error) {
+        res.status(400).json({ error: true, details: error })
+    }
 })
 
 

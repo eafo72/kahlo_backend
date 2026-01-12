@@ -40,7 +40,7 @@ app.get('/obtenerbytour/:id', async (req, res) => {
 
 app.post('/crear', async (req, res) => {
     try {
-        const { dia, hora_salida, hora_regreso, tour_id } = req.body
+        const { dia, hora_salida, hora_regreso, status, tour_id } = req.body
 
         let errors = Array();
 
@@ -53,6 +53,10 @@ app.post('/crear', async (req, res) => {
         if (!hora_regreso) {
             errors.push({ msg: "El campo hora_regreso debe de contener un valor" });
         }
+        if (!status) {
+            status = 1;
+        }
+
         if (!tour_id) {
             errors.push({ msg: "El campo tour_id debe de contener un valor" });
         }
@@ -74,9 +78,9 @@ app.post('/crear', async (req, res) => {
         let fecha = date + ' ' + time;
 
         let query = `INSERT INTO fecha 
-                        (dia, hora_salida, hora_regreso, created_at, updated_at, tour_id) 
+                        (dia, hora_salida, hora_regreso, status, created_at, updated_at, tour_id) 
                         VALUES 
-                        ('${dia}', '${hora_salida}', '${hora_regreso}', '${fecha}', '${fecha}', '${tour_id}')`;
+                        ('${dia}', '${hora_salida}', '${hora_regreso}', '${status}', '${fecha}', '${fecha}', '${tour_id}')`;
 
         let result = await db.pool.query(query);
         result = result[0];
@@ -100,7 +104,7 @@ app.post('/crear', async (req, res) => {
 
 app.put('/set', async (req, res) => {
     try {
-        const { id, dia, hora_salida, hora_regreso } = req.body
+        const { id, dia, hora_salida, hora_regreso, status } = req.body
 
         let errors = Array();
 
@@ -113,7 +117,9 @@ app.put('/set', async (req, res) => {
         if (!hora_regreso) {
             errors.push({ msg: "El campo hora_regreso debe de contener un valor" });
         }
-        
+        if (!status) {
+            status = 1;
+        }
         if (errors.length >= 1) {
 
             return res.status(400)
@@ -134,6 +140,7 @@ app.put('/set', async (req, res) => {
                         dia          = '${dia}',
                         hora_salida  = '${hora_salida}',
                         hora_regreso = '${hora_regreso}', 
+                        status       = '${status}', 
                         updated_at   = '${fecha}' 
                         WHERE id     = ${id}`;
 

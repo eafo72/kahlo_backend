@@ -905,8 +905,14 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         let diaSeleccionado = weekDay(fecha);
         //console.log('[HORARIOS] diaSeleccionado:', diaSeleccionado);
 
+        // Obtener mes (0 = enero, 11 = diciembre)
+        let mes = new Date(fecha).getMonth();
+        // Enero => status 1, cualquier otro => 2
+        let status = mes === 0 ? 1 : 2;
+
         //buscamos los horarios del tour
-        let query = `SELECT * FROM fecha WHERE tour_id=${tourId} AND dia = '${diaSeleccionado}' ORDER BY dia, hora_salida ASC`;
+        let query = `SELECT * FROM fecha WHERE tour_id=${tourId} AND dia = '${diaSeleccionado}' AND status = ${status} ORDER BY dia, hora_salida ASC`;
+        
         //console.log('[HORARIOS] query horarios:', query);
         let horariosResult = await db.pool.query(query);
         let horarios = horariosResult[0];
