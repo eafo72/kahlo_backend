@@ -3256,17 +3256,18 @@ app.put('/checkin', async (req, res) => {
             if (checkinResult.length > 0) {
 
                 query = `INSERT INTO checkin 
-                        (id_usuario,tipo) 
+                        (id_usuario, hora, tipo) 
                         VALUES 
-                        ('${idColaborador}','salida')`;
+                        ('${idColaborador}',CONVERT_TZ(NOW(), '+00:00', '-06:00'),'salida')`;
+
                 NoAbrirTorniquete = true;
 
             } else {
 
                 query = `INSERT INTO checkin 
-                        (id_usuario,tipo) 
+                        (id_usuario, hora, tipo) 
                         VALUES 
-                        ('${idColaborador}','entrada')`;
+                        ('${idColaborador}',CONVERT_TZ(NOW(), '+00:00', '-06:00'), 'entrada')`;
             }
 
 
