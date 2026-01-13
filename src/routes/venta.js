@@ -11,12 +11,12 @@ const QRCode = require('qrcode')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 // Función para cargar el template de correo según el idioma
 function getEmailTemplate(lang = 'es') {
-  try {
-    return require(`../templates/emailTemplate-correo_confirmacion_compra-${lang}`);
-  } catch (error) {
-    // Si el template del idioma no existe, cargar el español por defecto
-    return require('../templates/emailTemplate-correo_confirmacion_compra');
-  }
+    try {
+        return require(`../templates/emailTemplate-correo_confirmacion_compra-${lang}`);
+    } catch (error) {
+        // Si el template del idioma no existe, cargar el español por defecto
+        return require('../templates/emailTemplate-correo_confirmacion_compra');
+    }
 }
 
 // Template por defecto (español)
@@ -110,43 +110,43 @@ const normalizarHora = (horaStr) => {
 };
 
 function separarFechaHora(fecha_comprada) {
-  if (fecha_comprada == null) {
-    throw new Error("fecha_comprada es null o undefined");
-  }
+    if (fecha_comprada == null) {
+        throw new Error("fecha_comprada es null o undefined");
+    }
 
-  // Si es número (timestamp), convertir a Date
-  if (typeof fecha_comprada === "number") {
-    fecha_comprada = new Date(fecha_comprada);
-  }
+    // Si es número (timestamp), convertir a Date
+    if (typeof fecha_comprada === "number") {
+        fecha_comprada = new Date(fecha_comprada);
+    }
 
-  // Si es objeto Date, obtener su ISO (UTC) como base
-  if (fecha_comprada instanceof Date) {
-    // toISOString -> "2025-11-12T09:30:00.000Z"
-    fecha_comprada = fecha_comprada.toISOString();
-  }
+    // Si es objeto Date, obtener su ISO (UTC) como base
+    if (fecha_comprada instanceof Date) {
+        // toISOString -> "2025-11-12T09:30:00.000Z"
+        fecha_comprada = fecha_comprada.toISOString();
+    }
 
-  // A estas alturas asumimos que es string (si no lo es, lanzar)
-  if (typeof fecha_comprada !== "string") {
-    throw new Error("fecha_comprada debe ser string, number o Date");
-  }
+    // A estas alturas asumimos que es string (si no lo es, lanzar)
+    if (typeof fecha_comprada !== "string") {
+        throw new Error("fecha_comprada debe ser string, number o Date");
+    }
 
-  // Normalizar:
-  // 1) cambiar 'T' por espacio
-  // 2) quitar milisegundos (".123") si vienen
-  // 3) quitar zona horaria final: "Z" o "+02:00" o "-0500" etc.
-  // Resultado esperado: "YYYY-MM-DD HH:mm:ss" (si vienen segundos)
-  const limpio = fecha_comprada
-    .replace("T", " ")
-    .replace(/\.\d+/, "")                // quita .000 (milisegundos)
-    .replace(/(Z|[+-]\d{2}:?\d{2})$/, "") // quita Z o +02:00 o -0500
-    .trim();
+    // Normalizar:
+    // 1) cambiar 'T' por espacio
+    // 2) quitar milisegundos (".123") si vienen
+    // 3) quitar zona horaria final: "Z" o "+02:00" o "-0500" etc.
+    // Resultado esperado: "YYYY-MM-DD HH:mm:ss" (si vienen segundos)
+    const limpio = fecha_comprada
+        .replace("T", " ")
+        .replace(/\.\d+/, "")                // quita .000 (milisegundos)
+        .replace(/(Z|[+-]\d{2}:?\d{2})$/, "") // quita Z o +02:00 o -0500
+        .trim();
 
-  // separar por el primer espacio (fecha y resto)
-  const partes = limpio.split(" ");
-  const fecha = partes[0] || "";
-  const hora = partes.slice(1).join(" ") || ""; // en caso de que haya espacio en la zona original
+    // separar por el primer espacio (fecha y resto)
+    const partes = limpio.split(" ");
+    const fecha = partes[0] || "";
+    const hora = partes.slice(1).join(" ") || ""; // en caso de que haya espacio en la zona original
 
-  return { fecha, hora };
+    return { fecha, hora };
 }
 
 const verificarDisponibilidad = async (no_boletos, tourId, fecha, hora) => {
@@ -350,16 +350,16 @@ const handleSuccessfulPayment = async (session) => {
             ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
         };
 
-        
+
         const emailHtml = getEmailTemplate(lang)(emailData);
 
         // Enviar correos
         await mailer.sendMail({
             from: process.env.MAIL,
             to: process.env.MAIL,
-            subject: lang === 'en' 
-                ? "Purchase Confirmation - Casa Kahlo Museum!" 
-                : lang === 'fr' 
+            subject: lang === 'en'
+                ? "Purchase Confirmation - Casa Kahlo Museum!"
+                : lang === 'fr'
                     ? "Confirmation d'achat - Musée Casa Kahlo!"
                     : "¡Confirmación de compra - Museo Casa Kahlo!",
             html: emailHtml,
@@ -370,9 +370,9 @@ const handleSuccessfulPayment = async (session) => {
         await mailer.sendMail({
             from: process.env.MAIL,
             to: correo,
-            subject: lang === 'en' 
-                ? "Purchase Confirmation - Casa Kahlo Museum!" 
-                : lang === 'fr' 
+            subject: lang === 'en'
+                ? "Purchase Confirmation - Casa Kahlo Museum!"
+                : lang === 'fr'
                     ? "Confirmation d'achat - Musée Casa Kahlo!"
                     : "¡Confirmación de compra - Museo Casa Kahlo!",
             html: emailHtml,
@@ -402,7 +402,7 @@ const handleSuccessfulPayment_NEW = async (session) => {
         let id_reservacion = '';
         let idVenta = '';
         let viajeTourId = '';
-        
+
         // Obtener el idioma de los metadatos de la sesión o usar español por defecto
         const lang = session.metadata?.language || 'es';
 
@@ -500,7 +500,7 @@ const handleSuccessfulPayment_NEW = async (session) => {
         // Generar códigos QR para cada boleto
         const qrCodes = [];
         let ticketCounter = 1;
-        
+
         // Mapeo de tipos de boletos a su letra correspondiente (A, B o C)
         const tipoToLetter = {
             tipoA: "A",
@@ -511,7 +511,7 @@ const handleSuccessfulPayment_NEW = async (session) => {
         // Generar códigos QR para cada boleto
         for (const [tipo, cantidad] of Object.entries(tiposBoletos)) {
             const letraTipo = tipoToLetter[tipo] || tipo.replace('tipo', '');
-            
+
             for (let i = 1; i <= cantidad; i++) {
                 const qrData = `${id_reservacion}-${ticketCounter}-${letraTipo}`;
                 const qrCodeBuffer = await generateQRCode(qrData);
@@ -575,16 +575,16 @@ const handleSuccessfulPayment_NEW = async (session) => {
             total,
             ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
         };
-        
+
         const emailHtml = getEmailTemplate(lang)(emailData);
 
         // Enviar correo al administrador
         await mailer.sendMail({
             from: process.env.MAIL,
             to: process.env.MAIL,
-            subject: lang === 'en' 
-                ? "Purchase Confirmation - Casa Kahlo Museum!" 
-                : lang === 'fr' 
+            subject: lang === 'en'
+                ? "Purchase Confirmation - Casa Kahlo Museum!"
+                : lang === 'fr'
                     ? "Confirmation d'achat - Musée Casa Kahlo!"
                     : "¡Confirmación de compra - Museo Casa Kahlo!",
             html: emailHtml,
@@ -595,9 +595,9 @@ const handleSuccessfulPayment_NEW = async (session) => {
         await mailer.sendMail({
             from: process.env.MAIL,
             to: correo,
-            subject: lang === 'en' 
-                ? "Purchase Confirmation - Casa Kahlo Museum!" 
-                : lang === 'fr' 
+            subject: lang === 'en'
+                ? "Purchase Confirmation - Casa Kahlo Museum!"
+                : lang === 'fr'
                     ? "Confirmation d'achat - Musée Casa Kahlo!"
                     : "¡Confirmación de compra - Museo Casa Kahlo!",
             html: emailHtml,
@@ -624,7 +624,7 @@ app.get('/test-payment', async (req, res) => {
             id: 'test_session_123',
             metadata: {
                 no_boletos: 3,
-                tipos_boletos: JSON.stringify({tipoA: 1, tipoB: 2, tipoC: 0}),
+                tipos_boletos: JSON.stringify({ tipoA: 1, tipoB: 2, tipoC: 0 }),
                 nombre_cliente: 'Alex Flores',
                 cliente_id: 26,
                 correo: 'alex@agencianuba.com',
@@ -636,16 +636,16 @@ app.get('/test-payment', async (req, res) => {
         };
 
         await handleSuccessfulPayment_NEW(testSession);
-        res.status(200).json({ 
-            success: true, 
-            message: 'Pago de prueba procesado exitosamente' 
+        res.status(200).json({
+            success: true,
+            message: 'Pago de prueba procesado exitosamente'
         });
     } catch (error) {
         console.error('Error en el endpoint de prueba:', error);
-        res.status(500).json({ 
-            success: false, 
+        res.status(500).json({
+            success: false,
             message: 'Error procesando pago de prueba',
-            error: error.message 
+            error: error.message
         });
     }
 });
@@ -912,7 +912,7 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
 
         //buscamos los horarios del tour
         let query = `SELECT * FROM fecha WHERE tour_id=${tourId} AND dia = '${diaSeleccionado}' AND status = ${status} ORDER BY dia, hora_salida ASC`;
-        
+
         //console.log('[HORARIOS] query horarios:', query);
         let horariosResult = await db.pool.query(query);
         let horarios = horariosResult[0];
@@ -2587,67 +2587,67 @@ app.get('/stripe/session-check/:sessionId', async (req, res) => {
 
 //endpoint de da detalles de un pago apartir de session_id
 app.get('/stripe/session-detail/:sessionId', async (req, res) => {
-   const { sessionId } = req.params;
+    const { sessionId } = req.params;
 
-  try {
-    // 1️⃣ Obtener la sesión de checkout
-    const session = await stripe.checkout.sessions.retrieve(
-      sessionId,
-      {
-        expand: ['payment_intent'],
-      },
-      {
-        stripeAccount: 'acct_1SAz5b3CVvaJXMYX',
-      }
-    );
+    try {
+        // 1️⃣ Obtener la sesión de checkout
+        const session = await stripe.checkout.sessions.retrieve(
+            sessionId,
+            {
+                expand: ['payment_intent'],
+            },
+            {
+                stripeAccount: 'acct_1SAz5b3CVvaJXMYX',
+            }
+        );
 
-    if (!session.payment_intent) {
-      return res.status(404).json({
-        ok: false,
-        msg: 'La sesión no tiene PaymentIntent',
-      });
-    }
-
-    const paymentIntent = session.payment_intent;
-
-    // 2️⃣ Obtener el charge (opcional pero muy útil)
-    let charge = null;
-    if (paymentIntent.latest_charge) {
-      charge = await stripe.charges.retrieve(
-        paymentIntent.latest_charge,
-        {
-          stripeAccount: 'acct_1SAz5b3CVvaJXMYX',
+        if (!session.payment_intent) {
+            return res.status(404).json({
+                ok: false,
+                msg: 'La sesión no tiene PaymentIntent',
+            });
         }
-      );
+
+        const paymentIntent = session.payment_intent;
+
+        // 2️⃣ Obtener el charge (opcional pero muy útil)
+        let charge = null;
+        if (paymentIntent.latest_charge) {
+            charge = await stripe.charges.retrieve(
+                paymentIntent.latest_charge,
+                {
+                    stripeAccount: 'acct_1SAz5b3CVvaJXMYX',
+                }
+            );
+        }
+
+        // 3️⃣ Respuesta final
+        res.json({
+            ok: true,
+            session: {
+                id: session.id,
+                amount_total: session.amount_total,
+                currency: session.currency,
+                payment_status: session.payment_status,
+                customer_details: session.customer_details,
+                metadata: session.metadata,
+            },
+            payment_intent: {
+                id: paymentIntent.id,
+                status: paymentIntent.status,
+                amount: paymentIntent.amount,
+                payment_method: paymentIntent.payment_method,
+            },
+            charge,
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            ok: false,
+            error: error.message,
+        });
     }
-
-    // 3️⃣ Respuesta final
-    res.json({
-      ok: true,
-      session: {
-        id: session.id,
-        amount_total: session.amount_total,
-        currency: session.currency,
-        payment_status: session.payment_status,
-        customer_details: session.customer_details,
-        metadata: session.metadata,
-      },
-      payment_intent: {
-        id: paymentIntent.id,
-        status: paymentIntent.status,
-        amount: paymentIntent.amount,
-        payment_method: paymentIntent.payment_method,
-      },
-      charge,
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
-  }
 });
 
 // Endpoint para obtener datos de venta por sessionId de Stripe
@@ -3182,7 +3182,7 @@ app.put('/checkin', async (req, res) => {
         let tipoBoleto = 'A'; // Valor por defecto para el formato antiguo
 
 
-        
+
         // Detectar colaborador
         const esColaborador = isNuevoFormato && idParts[2].toUpperCase() === 'Z';
         if (esColaborador) {
@@ -3197,7 +3197,7 @@ app.put('/checkin', async (req, res) => {
                 });
             }
 
-            const idColaborador = match[1]; 
+            const idColaborador = match[1];
 
             const queryColaborador = `
                 SELECT id, nombres, apellidos, status
@@ -3228,7 +3228,7 @@ app.put('/checkin', async (req, res) => {
             //obtener letras de nombres y apellidos del colaborador de la BD 
             // Normalizar texto (por si hay acentos)
             const normalize = (text) =>
-                    text
+                text
                     .normalize("NFD")
                     .replace(/[\u0300-\u036f]/g, "")
                     .toUpperCase()
@@ -3241,11 +3241,36 @@ app.put('/checkin', async (req, res) => {
 
             //comparar para ver si es el colaborador
             if (letrasId !== letrasBD) {
-               return res.status(403).json({
+                return res.status(403).json({
                     error: true,
                     msg: "El idReservacion no corresponde al colaborador"
                 });
             }
+
+            //vemos si ya hizo checkin previamente
+            const queryCheckin = `SELECT * FROM checkin WHERE id_usuario = ? AND DATE(hora) = CURDATE()`;
+            const [checkinResult] = await db.pool.query(queryCheckin, [idColaborador]);
+            //guardamos el checkin en la tabla checkin
+            let query = ''
+            if (checkinResult.length > 0) {
+
+                query = `INSERT INTO checkin 
+                        (id_usuario,tipo) 
+                        VALUES 
+                        ('${idColaborador}','salida')`;
+
+            } else {
+
+                query = `INSERT INTO checkin 
+                        (id_usuario,tipo) 
+                        VALUES 
+                        ('${idColaborador}','entrada')`;
+            }
+
+
+
+            result = await db.pool.query(query);
+
 
             // Check-in exitoso para colaborador
             return res.status(200).json({
@@ -3262,11 +3287,11 @@ app.put('/checkin', async (req, res) => {
         if (isNuevoFormato) {
             numeroBoleto = parseInt(idParts[1]); // Segunda parte es el número de boleto
             tipoBoleto = idParts[2]; // Tercera parte es el tipo de boleto (ej: A)
-            
+
             if (isNaN(numeroBoleto) || numeroBoleto <= 0) {
-                return res.status(400).json({ 
-                    error: true, 
-                    msg: "Número de boleto inválido. Debe ser un número mayor a 0" 
+                return res.status(400).json({
+                    error: true,
+                    msg: "Número de boleto inválido. Debe ser un número mayor a 0"
                 });
             }
         }
@@ -3316,7 +3341,7 @@ app.put('/checkin', async (req, res) => {
         const [ahoraHoras, ahoraMinutos] = nowCDMX.toLocaleTimeString("es-MX", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }).split(":").map(Number);
         const totalMinutosTour = horaTourHoras * 60 + horaTourMinutos;
         const totalMinutosAhora = ahoraHoras * 60 + ahoraMinutos;
-        
+
 
         // Verificar que no exceda boletos
         if (checkinActual >= noBoletos) {
@@ -3333,7 +3358,7 @@ app.put('/checkin', async (req, res) => {
         let fecha = date + ' ' + time;
         // Inicializar variables para la actualización
         let updateCheckinTiposBoletos = null;
-        
+
         // Solo procesar checkin_tipos_boletos si es el formato nuevo
         if (isNuevoFormato) {
             // Inicializar la estructura base con todos los tipos de boletos en 0
@@ -3365,7 +3390,7 @@ app.put('/checkin', async (req, res) => {
                     msg: `Tipo de boleto inválido. Debe ser A, B o C`
                 });
             }
-            
+
             // Incrementar el contador para este tipo de boleto
             checkinTiposBoletos[tipoBoletoCompleto] += 1;
             updateCheckinTiposBoletos = JSON.stringify(checkinTiposBoletos);
@@ -3374,7 +3399,7 @@ app.put('/checkin', async (req, res) => {
         // Construir la consulta de actualización dinámicamente según el formato
         let queryUpdate;
         let queryParams;
-        
+
         if (isNuevoFormato) {
             queryUpdate = `
                 UPDATE venta
@@ -3394,7 +3419,7 @@ app.put('/checkin', async (req, res) => {
             `;
             queryParams = [nuevoCheckin, fecha, baseId];
         }
-        
+
         await db.pool.query(queryUpdate, queryParams);
         const fechaTourLocal = fechaIdaTourCDMX.toLocaleDateString("es-MX");
         const horaTourLocal = fechaIdaTourCDMX.toLocaleTimeString("es-MX", {
@@ -3527,10 +3552,10 @@ app.post('/verificarIdReservacion', async (req, res) => {
     try {
         const { idReservacion } = req.body;
 
-       
 
-// Revisa si existe el número de reservación y si la fecha coincide con hoy
-let query = `
+
+        // Revisa si existe el número de reservación y si la fecha coincide con hoy
+        let query = `
     SELECT id_reservacion 
     FROM venta 
     WHERE id_reservacion = '${idReservacion}'
@@ -3922,7 +3947,7 @@ app.post('/cancelar-old', auth, async (req, res) => {
 
 app.post('/cancelar', auth, async (req, res) => {
     //agregar la validacion de checkin > 0 ya no se puede solo si checkin = 0
-    
+
     try {
         const { id_reservacion } = req.body
 
@@ -3999,7 +4024,7 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
         return res.status(400).json({ msg: 'Faltan parámetros obligatorios.', error: true });
     }
 
-    
+
     let fecha = getFecha();
     let connection;
 
@@ -4023,11 +4048,11 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
         const nombre_cliente = rows[0].nombre_cliente;
         const correo = rows[0].correo;
         const total = rows[0].total;
-        
+
         const fechaHora = separarFechaHora(rows[0].fecha_comprada);
-        
-               
-        
+
+
+
         if (boletos_devueltos === 1) {
             console.log('Boletos ya devueltos');
             await connection.rollback();
@@ -4087,7 +4112,7 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
         if (connection) connection.release();
     }
 
-    res.json({msj: "✅ Compra cancelada con éxito."});
+    res.json({ msj: "✅ Compra cancelada con éxito." });
 
 });
 

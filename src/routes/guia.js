@@ -170,7 +170,7 @@ app.post('/crear', imageController.upload, async (req, res) => {
             }
         });
 
-        if (tipoColaborador = 'Colaborador') {
+        if (tipoColaborador == 'Colaborador') {
             query = `INSERT INTO usuario 
                         (nombres, apellidos, 
                         telefono, correo, password,
@@ -184,7 +184,7 @@ app.post('/crear', imageController.upload, async (req, res) => {
                         '${identificacion1}', '${empresa_id}',
                         '${fecha}', '${fecha}')`;
 
-        } else if (tipoColaborador = 'Especialista') {
+        } else if (tipoColaborador == 'Especialista') {
             query = `INSERT INTO usuario 
                         (nombres, apellidos, 
                         telefono, correo, password,
