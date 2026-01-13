@@ -3251,13 +3251,15 @@ app.put('/checkin', async (req, res) => {
             const queryCheckin = `SELECT * FROM checkin WHERE id_usuario = ? AND DATE(hora) = CURDATE()`;
             const [checkinResult] = await db.pool.query(queryCheckin, [idColaborador]);
             //guardamos el checkin en la tabla checkin
-            let query = ''
+            let query = '';
+            let NoAbrirTorniquete = false;
             if (checkinResult.length > 0) {
 
                 query = `INSERT INTO checkin 
                         (id_usuario,tipo) 
                         VALUES 
                         ('${idColaborador}','salida')`;
+                NoAbrirTorniquete = true;
 
             } else {
 
@@ -3273,12 +3275,13 @@ app.put('/checkin', async (req, res) => {
 
 
             // Check-in exitoso para colaborador
+            //si no se abre el torniquete, significa que ya habia hecho checkin previamente y solo va a registrar su salida
             return res.status(200).json({
-                error: false,
-                msg: "Checkin realizado con éxito",
+                error: NoAbrirTorniquete,
+                msg: NoAbrirTorniquete ? "Checkin realizado con éxito, no se abre el torniquete" : "Checkin realizado con éxito",
                 data: {
                     tipo: "colaborador",
-                    nombre_colaborador: `${colabResult[0].nombres} ${colabResult[0].apellidos}`
+                    nombre_colaborador: `${colabResult[0].nombres} ${colabResult[0].apellidos}`,
                 }
             });
         }
