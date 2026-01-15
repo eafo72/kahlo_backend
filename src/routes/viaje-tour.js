@@ -74,6 +74,8 @@ LEFT JOIN
     viajeTour AS vt ON v.viajeTour_id = vt.id
 LEFT JOIN 
     tour AS t ON vt.tour_id = t.id
+WHERE
+    v.status_traspaso <> 99    
 ORDER BY
     v.fecha_compra DESC`;
         let tours = await db.pool.query(query);
@@ -347,7 +349,7 @@ INNER JOIN
 INNER JOIN
     usuario AS ad ON ad.empresa_id = e.id     
 WHERE 
-    t.empresa_id=${empresaId} AND ad.id=${adminId} 
+    t.empresa_id=${empresaId} AND ad.id=${adminId} AND v.status_traspaso <> 99
 ORDER BY
     v.fecha_compra DESC`;
 
