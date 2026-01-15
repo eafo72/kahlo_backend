@@ -3455,6 +3455,18 @@ app.put('/checkin', async (req, res) => {
     }
 });
 
+app.get('/checkin-data', async (req, res) => {
+    try {
+
+        let query = `SELECT checkin.*, usuario.nombres, usuario.apellidos FROM checkin INNER JOIN usuario ON checkin.id_usuario = usuario.id ORDER BY hora DESC`;
+        let data = await db.pool.query(query);
+        res.json(data[0]);
+
+    } catch (error) {
+        res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
+    }
+});
+
 
 app.put('/delete', async (req, res) => {
     try {
