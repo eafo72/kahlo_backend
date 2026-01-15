@@ -3458,7 +3458,12 @@ app.put('/checkin', async (req, res) => {
 app.get('/checkin-data', async (req, res) => {
     try {
 
-        let query = `SELECT checkin.*, usuario.nombres, usuario.apellidos FROM checkin INNER JOIN usuario ON checkin.id_usuario = usuario.id ORDER BY hora DESC`;
+        let query = `SELECT 
+    checkin.*,
+    CONCAT(usuario.nombres, ' ', usuario.apellidos) AS nombre_completo
+  FROM checkin
+  INNER JOIN usuario ON checkin.id_usuario = usuario.id
+  ORDER BY hora DESC`;
         let data = await db.pool.query(query);
         res.json(data[0]);
 
