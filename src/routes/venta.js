@@ -3458,12 +3458,16 @@ app.put('/checkin', async (req, res) => {
 app.get('/checkin-data', async (req, res) => {
     try {
 
-        let query = `SELECT 
-    checkin.*,
-    CONCAT(usuario.nombres, ' ', usuario.apellidos) AS nombre_completo
-  FROM checkin
-  INNER JOIN usuario ON checkin.id_usuario = usuario.id
-  ORDER BY hora DESC`;
+        let query = `
+            SELECT 
+            checkin.*,
+            DATE_FORMAT(checkin.hora, '%Y-%m-%d %H:%i:%s') AS hora,
+            CONCAT(usuario.nombres, ' ', usuario.apellidos) AS nombre_completo
+            FROM checkin
+            INNER JOIN usuario ON checkin.id_usuario = usuario.id
+            ORDER BY checkin.hora DESC
+        `;
+
         let data = await db.pool.query(query);
         res.json(data[0]);
 
