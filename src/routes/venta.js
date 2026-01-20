@@ -1211,6 +1211,23 @@ app.post('/crear-admin', async (req, res) => {
     try {
         let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total, metodo_pago } = req.body
 
+        if (!correo) {
+            return res.status(400).json({
+                error: true,
+                msg: "El correo es obligatorio"
+            });
+        }
+
+        // Expresión regular simple para email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!emailRegex.test(correo)) {
+            return res.status(400).json({
+                error: true,
+                msg: "El formato del correo no es válido"
+            });
+        }
+
         let nombre_completo = nombre_cliente + ' ' + apellidos_cliente;
 
         let today = new Date().toLocaleString('es-MX', {
@@ -1510,8 +1527,12 @@ app.post('/crear-admin', async (req, res) => {
             }]
         }
 
-        const info = await mailer.sendMail(message);
-        console.log('Email enviado al admin:', info);
+        try {
+            const info = await mailer.sendMail(message);
+            console.log('Email enviado al admin:', info);
+        } catch (e) {
+            console.error("Falló envio de correo al admin:", e.message);
+        }
 
         message = {
             from: process.env.MAIL,
@@ -1526,14 +1547,18 @@ app.post('/crear-admin', async (req, res) => {
             }]
         }
 
-        const info2 = await mailer.sendMail(message);
-        console.log('Email enviado al cliente:', info2);
+        try {
+            const info2 = await mailer.sendMail(message);
+            console.log('Email enviado al cliente:', info2);
+        } catch (e) {
+            console.error("Falló envio de correo al cliente:", e.message);
+        }
 
         //////////////////////////////////////////// fin correo /////////////////////////////////////
 
 
-
         res.status(200).json({ msg: "Compra exitosa", id_reservacion: id_reservacion, viajeTourId: viajeTourId, clienteExiste: clienteExiste, error: false });
+
 
     } catch (error) {
         console.log(error);
@@ -1549,6 +1574,23 @@ app.post('/crear-admin-cortesia', async (req, res) => {
         pagado = 1;
         status_traspaso = 98;
         total = 0;
+
+        if (!correo) {
+            return res.status(400).json({
+                error: true,
+                msg: "El correo es obligatorio"
+            });
+        }
+
+        // Expresión regular simple para email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!emailRegex.test(correo)) {
+            return res.status(400).json({
+                error: true,
+                msg: "El formato del correo no es válido"
+            });
+        }
 
         let nombre_completo = nombre_cliente + ' ' + apellidos_cliente;
 
@@ -1849,8 +1891,14 @@ app.post('/crear-admin-cortesia', async (req, res) => {
             }]
         }
 
-        const info = await mailer.sendMail(message);
-        console.log('Email enviado al admin:', info);
+
+        try {
+            const info = await mailer.sendMail(message);
+            console.log('Email enviado al admin:', info);
+        } catch (e) {
+            console.error("Falló envio de correo al admin:", e.message);
+        }
+
 
         message = {
             from: process.env.MAIL,
@@ -1865,8 +1913,13 @@ app.post('/crear-admin-cortesia', async (req, res) => {
             }]
         }
 
-        const info2 = await mailer.sendMail(message);
-        console.log('Email enviado al cliente:', info2);
+        try {
+            const info2 = await mailer.sendMail(message);
+            console.log('Email enviado al cliente:', info2);
+        } catch (e) {
+            console.error("Falló envio de correo al cliente:", e.message);
+        }
+
 
         //////////////////////////////////////////// fin correo /////////////////////////////////////
 
