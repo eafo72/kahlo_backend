@@ -40,7 +40,7 @@ app.get('/obtenerbytour/:id', async (req, res) => {
 
 app.post('/crear', async (req, res) => {
     try {
-        const { dia, hora_salida, hora_regreso, status, tour_id } = req.body
+        const { dia, hora_salida, hora_regreso, status, apply_for_operator, tour_id } = req.body
 
         let errors = Array();
 
@@ -55,6 +55,9 @@ app.post('/crear', async (req, res) => {
         }
         if (!status) {
             status = 1;
+        }
+        if (!apply_for_operator) {
+            apply_for_operator = 0;
         }
 
         if (!tour_id) {
@@ -78,9 +81,9 @@ app.post('/crear', async (req, res) => {
         let fecha = date + ' ' + time;
 
         let query = `INSERT INTO fecha 
-                        (dia, hora_salida, hora_regreso, status, created_at, updated_at, tour_id) 
+                        (dia, hora_salida, hora_regreso, status, applyForOperator, created_at, updated_at, tour_id) 
                         VALUES 
-                        ('${dia}', '${hora_salida}', '${hora_regreso}', '${status}', '${fecha}', '${fecha}', '${tour_id}')`;
+                        ('${dia}', '${hora_salida}', '${hora_regreso}', '${status}', '${apply_for_operator}', '${fecha}', '${fecha}', '${tour_id}')`;
 
         let result = await db.pool.query(query);
         result = result[0];
@@ -104,7 +107,7 @@ app.post('/crear', async (req, res) => {
 
 app.put('/set', async (req, res) => {
     try {
-        const { id, dia, hora_salida, hora_regreso, status } = req.body
+        const { id, dia, hora_salida, hora_regreso, status, apply_for_operator } = req.body
 
         let errors = Array();
 
@@ -120,6 +123,10 @@ app.put('/set', async (req, res) => {
         if (!status) {
             status = 1;
         }
+        if (!apply_for_operator) {
+            apply_for_operator = 0;
+        }
+
         if (errors.length >= 1) {
 
             return res.status(400)
@@ -137,12 +144,13 @@ app.put('/set', async (req, res) => {
         let fecha = date + ' ' + time;
 
         let query = `UPDATE fecha SET
-                        dia          = '${dia}',
-                        hora_salida  = '${hora_salida}',
-                        hora_regreso = '${hora_regreso}', 
-                        status       = '${status}', 
-                        updated_at   = '${fecha}' 
-                        WHERE id     = ${id}`;
+                        dia              = '${dia}',
+                        hora_salida      = '${hora_salida}',
+                        hora_regreso     = '${hora_regreso}', 
+                        status           = '${status}', 
+                        applyForOperator = '${apply_for_operator}', 
+                        updated_at       = '${fecha}' 
+                        WHERE id         =  ${id}`;
 
         let result = await db.pool.query(query);
         result = result[0];
