@@ -9,6 +9,18 @@ const mailer = require('../controller/mailController')
 const helperName = require('../helpers/name')
 const QRCode = require('qrcode')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+
+//funcion para validar fecha seleccionada (que no sea martes)
+function validarDiaPermitido(fecha) {
+    const dia = weekDay(fecha); // usa tu función existente
+    if (dia === 'Martes') {
+        const error = new Error('No hay recorridos disponibles los martes');
+        error.status = 403;
+        throw error;
+    }
+}
+
 // Función para cargar el template de correo según el idioma
 function getEmailTemplate(lang = 'es') {
     try {
@@ -863,6 +875,10 @@ app.get('/obtenerByViajeTourId/:id', async (req, res) => {
 app.get('/disponibilidad/:tourid/fecha/:fecha/:hora', async (req, res) => {
     try {
         let fecha = req.params.fecha;
+
+        //validamos que no sea martes
+        validarDiaPermitido(fecha);
+
         let tourId = req.params.tourid;
         let hora = req.params.hora;
         let query = `SELECT 
@@ -887,7 +903,7 @@ app.get('/disponibilidad/:tourid/fecha/:fecha/:hora', async (req, res) => {
         res.status(200).json({ msg: "Lugares no disponibles", error: false, disponible: false, sinReserva: false, lugares_disp: disponibilidad.lugares_disp });
 
     } catch (error) {
-        res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
+        res.status(500).json({ msg: error.message || 'Error obteniendo horarios', error: true, details: error })
     }
 })
 
@@ -895,6 +911,10 @@ app.get('/disponibilidad/:tourid/fecha/:fecha/:hora', async (req, res) => {
 app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
     try {
         let fecha = req.params.fecha;
+
+        //verificamos que no sea martes
+        validarDiaPermitido(fecha);
+
         let tourId = req.params.tourid;
         let boletos = parseInt(req.params.boletos);
 
@@ -983,8 +1003,10 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         res.status(200).json({ error: false, horarios: horariosDisponibles });
 
     } catch (error) {
-        console.error('[HORARIOS] Error:', error);
-        res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
+        return res.status(error.status || 500).json({
+            error: true,
+            msg: error.message || 'Error obteniendo horarios'
+        });
     }
 })
 
@@ -993,6 +1015,8 @@ app.post('/crear', async (req, res) => {
     try {
         let { no_boletos, tipos_boletos, pagado, nombre_cliente, cliente_id, correo, viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
 
+        //validamos que no sea martes
+        validarDiaPermitido(fecha_ida);
 
         let today = new Date().toLocaleString('es-MX', {
             timeZone: 'America/Mexico_City',
@@ -1203,13 +1227,17 @@ app.post('/crear', async (req, res) => {
 
     } catch (error) {
         console.log(error);
-        res.status(400).json({ error: true, details: error })
+        res.status(400).json({ error: true, msg: error.message || 'Error obteniendo los datos', details: error })
+       
     }
 })
 
 app.post('/crear-admin', async (req, res) => {
     try {
         let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total, metodo_pago } = req.body
+
+        // validamos que no sea martes
+        validarDiaPermitido(fecha_ida);
 
         if (!correo) {
             return res.status(400).json({
@@ -1562,13 +1590,16 @@ app.post('/crear-admin', async (req, res) => {
 
     } catch (error) {
         console.log(error);
-        res.status(400).json({ error: true, details: error })
+        res.status(400).json({ error: true, msg: error.message || 'Error obteniendo los datos', details: error })
     }
 });
 
 app.post('/crear-admin-cortesia', async (req, res) => {
     try {
         let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total, metodo_pago } = req.body
+
+        // validamos que no sea martes
+        validarDiaPermitido(fecha_ida);
 
         //caracterizticas del boleto de cortesia
         pagado = 1;
@@ -1929,7 +1960,7 @@ app.post('/crear-admin-cortesia', async (req, res) => {
 
     } catch (error) {
         console.log(error);
-        res.status(400).json({ error: true, details: error })
+        res.status(400).json({ error: true, msg: error.message || 'Error obteniendo los datos', details: error })
     }
 })
 
@@ -2314,6 +2345,11 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
 
         const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = metadata;
         let fecha_ida_original = metadata.fecha_ida;
+
+        //verificamos que no sea martes
+        validarDiaPermitido(fecha_ida_original);
+
+
         let horaCompleta = normalizarHora(metadata.horaCompleta);
 
         // 1.- Verificar disponibilidad
