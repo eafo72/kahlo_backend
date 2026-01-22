@@ -11,14 +11,41 @@ const QRCode = require('qrcode')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 
-//funcion para validar fecha seleccionada (que no sea martes)
-function validarDiaPermitido(fecha) {
+//funcion para validar fecha seleccionada (que no sea martes) y que la fecha no pertenezca a fechas bloqueadas
+async function validarDiaPermitido(fecha, tourId) {
     const dia = weekDay(fecha); // usa tu función existente
     if (dia === 'Martes') {
         const error = new Error('No hay recorridos disponibles los martes');
         error.status = 403;
         throw error;
     }
+
+    //obtener fechas bloqueadas
+    let query = `SELECT * FROM tour WHERE id = ${tourId}`;
+    let resultado = await db.pool.query(query);
+
+    const fechasDeshabilitadas = resultado[0][0].fechas_no_disponibles;
+
+    const arrayFechasDeshabilitadas = fechasDeshabilitadas
+        .split(";")
+        .filter(f => f !== "")
+        .map(f => {
+            const [d, m, y] = f.split("-");
+            return new Date(y, m - 1, d); // mes -1 porque JS empieza en 0
+        });
+
+    const fechaStr = new Date(fecha).toISOString().split('T')[0];
+
+    const existe = arrayFechasDeshabilitadas.some(d =>
+        d.toISOString().split('T')[0] === fechaStr
+    );
+
+    if (existe) {
+        const error = new Error(`La fecha ${fecha} no está disponible`);
+        error.status = 403;
+        throw error;
+    }
+
 }
 
 // Función para cargar el template de correo según el idioma
@@ -875,11 +902,12 @@ app.get('/obtenerByViajeTourId/:id', async (req, res) => {
 app.get('/disponibilidad/:tourid/fecha/:fecha/:hora', async (req, res) => {
     try {
         let fecha = req.params.fecha;
+        let tourId = req.params.tourid;
 
         //validamos que no sea martes
-        validarDiaPermitido(fecha);
+        await validarDiaPermitido(fecha, tourId);
 
-        let tourId = req.params.tourid;
+
         let hora = req.params.hora;
         let query = `SELECT 
                         * 
@@ -911,11 +939,12 @@ app.get('/disponibilidad/:tourid/fecha/:fecha/:hora', async (req, res) => {
 app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
     try {
         let fecha = req.params.fecha;
+        let tourId = req.params.tourid;
 
         //verificamos que no sea martes
-        validarDiaPermitido(fecha);
+        await validarDiaPermitido(fecha, tourId);
 
-        let tourId = req.params.tourid;
+
         let boletos = parseInt(req.params.boletos);
 
         // Debug logs para depuración
@@ -1016,7 +1045,7 @@ app.post('/crear', async (req, res) => {
         let { no_boletos, tipos_boletos, pagado, nombre_cliente, cliente_id, correo, viajeTourId, tourId, fecha_ida, horaCompleta, total } = req.body
 
         //validamos que no sea martes
-        validarDiaPermitido(fecha_ida);
+        await validarDiaPermitido(fecha_ida, tourId);
 
         let today = new Date().toLocaleString('es-MX', {
             timeZone: 'America/Mexico_City',
@@ -1228,7 +1257,7 @@ app.post('/crear', async (req, res) => {
     } catch (error) {
         console.log(error);
         res.status(400).json({ error: true, msg: error.message || 'Error obteniendo los datos', details: error })
-       
+
     }
 })
 
@@ -1237,7 +1266,7 @@ app.post('/crear-admin', async (req, res) => {
         let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total, metodo_pago } = req.body
 
         // validamos que no sea martes
-        validarDiaPermitido(fecha_ida);
+        await validarDiaPermitido(fecha_ida, tourId);
 
         if (!correo) {
             return res.status(400).json({
@@ -1599,7 +1628,7 @@ app.post('/crear-admin-cortesia', async (req, res) => {
         let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total, metodo_pago } = req.body
 
         // validamos que no sea martes
-        validarDiaPermitido(fecha_ida);
+        await validarDiaPermitido(fecha_ida, tourId);
 
         //caracterizticas del boleto de cortesia
         pagado = 1;
@@ -2347,7 +2376,7 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
         let fecha_ida_original = metadata.fecha_ida;
 
         //verificamos que no sea martes
-        validarDiaPermitido(fecha_ida_original);
+        await validarDiaPermitido(fecha_ida_original, tourId);
 
 
         let horaCompleta = normalizarHora(metadata.horaCompleta);
@@ -2509,6 +2538,179 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
                       WHERE id   = ${result.insertId}`;
 
         await db.pool.query(query);
+
+        res.json({ sessionId: session.id, url: session.url, error: false });
+
+    } catch (error) {
+        console.error('Error creating checkout session:', error);
+        res.status(400).json({ error: true, msg: error.message });
+    }
+});
+
+app.post('/stripe/create-checkout-session-operator', async (req, res) => {
+    try {
+        const { lineItems, customerEmail, successUrl, cancelUrl, metadata } = req.body;
+
+        const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = metadata;
+        let fecha_ida_original = metadata.fecha_ida;
+
+        //verificamos que no sea martes
+        await validarDiaPermitido(fecha_ida_original, tourId);
+
+
+        let horaCompleta = normalizarHora(metadata.horaCompleta);
+
+        // 1.- Verificar disponibilidad
+        const disponible = verificarDisponibilidad(no_boletos, tourId, fecha_ida_original, horaCompleta);
+        if (disponible == false) {
+            return res.status(200).json({ error: true, msg: "Cupo no disponible" });
+        }
+
+        // 2.- Crear preventa pagado = 0, total = 0
+        let today = new Date().toLocaleString('es-MX', {
+            timeZone: 'America/Mexico_City',
+            hour12: false // formato 24 horas sin AM/PM
+        });
+        // Ejemplo: "29/09/2025, 23:42:08"
+        let [datePart, timePart] = today.split(', ');
+        let [day, month, year] = datePart.split('/');
+        let [hours, minutes, seconds] = timePart.split(':');
+        month = month.padStart(2, '0');
+        day = day.padStart(2, '0');
+        hours = hours.padStart(2, '0');
+        minutes = minutes.padStart(2, '0');
+        seconds = seconds.padStart(2, '0');
+        let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+        let seCreoRegistro = false;
+        let viajeTour = '';
+        let query = ``;
+        let viajeTourId = null;
+
+        //info tour para calcular fecha de regreso
+        query = `SELECT * FROM tour WHERE id = ${tourId} `;
+        let tour = await db.pool.query(query);
+        tour = tour[0][0];
+        let duracion = tour.duracion;
+        let max_pasajeros = tour.max_pasajeros;
+
+        const fecha_ida_formateada = `${fecha_ida_original} ${horaCompleta}`;
+
+        try {
+            let hora = horaCompleta.split(':');
+
+            query = `SELECT 
+                        * 
+                        FROM viajeTour 
+                        WHERE CAST(fecha_ida AS DATE) = '${fecha_ida_original}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
+                        AND tour_id = ${tourId};`;
+            let disponibilidad = await db.pool.query(query);
+            disponibilidad = disponibilidad[0];
+
+            //formateo de fecha regreso
+            const newfecha = addMinutesToDate(new Date(fecha_ida_formateada), parseInt(duracion));
+            const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
+
+            if (disponibilidad.length == 0) {
+                query = `SELECT * FROM tour WHERE id = ${tourId}`;
+                let result = await db.pool.query(query);
+
+                if (result[0].length == 0) {
+                    console.error("Error en la busqueda del tour por id");
+                    return;
+                }
+
+                result = result[0][0];
+
+                let guia = result.guias;
+                guia = JSON.parse(guia);
+
+                query = `INSERT INTO viajeTour 
+                            (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
+                            VALUES 
+                            ('${fecha_ida_formateada}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
+
+                result = await db.pool.query(query);
+                result = result[0];
+
+                viajeTourId = result.insertId;
+                seCreoRegistro = true;
+
+            } else {
+                viajeTour = disponibilidad[0];
+                viajeTourId = disponibilidad[0].id;
+            }
+
+        } catch (error) {
+            console.log('Error en creacion viajeTour:', error);
+            return;
+        }
+
+        let lugares_disp = 0;
+
+        if (seCreoRegistro) {
+            lugares_disp = max_pasajeros - parseInt(no_boletos);
+        } else {
+            lugares_disp = viajeTour.lugares_disp - parseInt(no_boletos);
+        }
+
+
+        // 3.- Crea la sesión en la cuenta conectada
+        const session = await stripe.checkout.sessions.create(
+            {
+                payment_method_types: ['card'],
+                line_items: lineItems,
+                mode: 'payment',
+                success_url: successUrl,
+                cancel_url: `${cancelUrl}?session_id={CHECKOUT_SESSION_ID}`,
+                customer_email: customerEmail,
+                metadata: metadata,
+                expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // expira en 30 minutos
+                billing_address_collection: 'auto',
+            },
+            {
+                stripeAccount: 'acct_1SAz5b3CVvaJXMYX', // ID de la cuenta conectada osea la cuenta del museo
+            }
+        );
+
+        //info del tour operador
+        query = `SELECT * FROM usuario WHERE id = ${cliente_id}`;
+        let client = await db.pool.query(query);
+        client = client[0];
+        if (client.length == 0) {
+            console.error("Error en la busqueda de los datos del cliente");
+            return;
+        }
+        client = client[0];
+
+        //actualizar los lugares disponibles
+        query = `UPDATE viajeTour SET
+                      lugares_disp = '${lugares_disp}'
+                      WHERE id     = ${viajeTourId}`;
+        await db.pool.query(query);
+
+        //crear una venta por cada boleto
+        for (let i = 1; i <= parseInt(no_boletos); i++) {
+            query = `INSERT INTO venta
+                          (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, session_id) 
+                          VALUES 
+                          ('V', '1', '${tipos_boletos}', '0', '0', '${fecha}', '0.0', '0', '${fecha_ida_formateada}', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}', '${session.id}')`;
+
+            let result = await db.pool.query(query);
+            result = result[0];
+
+            //creamos el ide de reservacion
+            let id_reservacion = result.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
+
+            // 4.- guardar en ventas el sessionId de stripe y el id de reservacion
+            query = `UPDATE venta SET
+                      id_reservacion = '${id_reservacion}',
+                      session_id = '${session.id}
+                      WHERE id  = ${result.insertId}`;
+            await db.pool.query(query);
+
+        }
 
         res.json({ sessionId: session.id, url: session.url, error: false });
 
