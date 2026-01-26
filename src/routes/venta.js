@@ -2551,7 +2551,11 @@ app.post('/stripe/create-checkout-session-operator', async (req, res) => {
     try {
         const { lineItems, customerEmail, successUrl, cancelUrl, metadata } = req.body;
 
-        const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = metadata;
+        const { no_boletos, nombre_cliente, cliente_id, correo, tourId, total } = metadata;
+
+        const tipos_boletos = JSON.stringify({
+            tipoA: 1
+        })
         let fecha_ida_original = metadata.fecha_ida;
 
         //verificamos que no sea martes
@@ -2706,7 +2710,7 @@ app.post('/stripe/create-checkout-session-operator', async (req, res) => {
             // 4.- guardar en ventas el sessionId de stripe y el id de reservacion
             query = `UPDATE venta SET
                       id_reservacion = '${id_reservacion}',
-                      session_id = '${session.id}
+                      session_id = '${session.id}'
                       WHERE id  = ${result.insertId}`;
             await db.pool.query(query);
 
@@ -3026,7 +3030,51 @@ app.get('/stripe/session/:sessionId', async (req, res) => {
             details: error
         });
     }
+});
+
+app.get('/stripe/session-operator/:sessionId', async (req, res) => {
+    try {
+        let sessionId = req.params.sessionId;
+
+        let query = `SELECT 
+                        id_reservacion, 
+                        viajeTour_id,
+                        session_id,
+                        id,
+                        no_boletos,
+                        total,
+                        nombre_cliente,
+                        correo,
+                        fecha_compra,
+                        created_at
+                        FROM venta
+                        WHERE session_id = '${sessionId}';`;
+
+        let venta = await db.pool.query(query);
+
+        if (venta[0].length === 0) {
+            return res.status(404).json({
+                msg: 'No se encontró ninguna venta con ese session ID',
+                error: true,
+                sessionId: sessionId
+            });
+        }
+
+        res.status(200).json({
+            error: false,
+            data: venta[0],
+            msg: 'Venta encontrada exitosamente'
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            msg: 'Hubo un error obteniendo los datos',
+            error: true,
+            details: error
+        });
+    }
 })
+
 ////////////////////////LIGAR CUENTA ////////////////////////
 
 // Paso 1: crear la cuenta Standard del museo
@@ -3931,6 +3979,156 @@ app.get('/compras/:clienteId', async (req, res) => {
     }
 });
 
+app.get('/comprasByOperator/:clienteId', async (req, res) => {
+    try {
+        const clienteId = req.params.clienteId;
+        let query = `
+  SELECT 
+    MIN(v.id) AS id,
+    GROUP_CONCAT(v.id_reservacion ORDER BY v.id_reservacion SEPARATOR ',') AS id_reservaciones,
+    SUM(v.no_boletos) AS no_boletos,
+    SUM(v.total) AS total,
+    DATE_FORMAT(MAX(v.fecha_compra), '%Y-%m-%d %H:%i:%s') AS fecha_compra,
+    MAX(v.pagado) AS pagado,
+    MAX(v.checkin) AS checkin,
+    v.session_id,
+    t.nombre AS nombreTour, 
+    DATE_FORMAT(vt.fecha_ida, '%Y-%m-%d %H:%i:%s') AS fecha_ida,
+    vt.fecha_regreso
+  FROM venta v
+  INNER JOIN viajeTour vt ON v.viajeTour_id = vt.id
+  INNER JOIN tour t ON vt.tour_id = t.id
+  WHERE v.cliente_id = ${clienteId}
+  GROUP BY v.session_id
+  ORDER BY fecha_compra DESC
+`;
+
+        let compras = await db.pool.query(query);
+        res.status(200).json({ error: false, data: compras[0] });
+    } catch (error) {
+        console.error("Error en historial de compras:", error);
+        res.status(500).json({ error: true, msg: "Error obteniendo historial del tour operador", details: error });
+    }
+});
+
+app.get('/boletos-por-session/:sessionId', async (req, res) => {
+    try {
+        const sessionId = req.params.sessionId;
+        
+        let query = `
+            SELECT 
+                v.id,
+                v.id_reservacion,
+                v.no_boletos,
+                v.total,
+                v.nombre_cliente,
+                v.correo,
+                DATE_FORMAT(v.fecha_compra, '%Y-%m-%d %H:%i:%s') AS fecha_compra,
+                v.pagado,
+                v.checkin,
+                v.session_id,
+                t.nombre AS nombreTour,
+                DATE_FORMAT(vt.fecha_ida, '%Y-%m-%d %H:%i:%s') AS fecha_ida,
+                vt.fecha_regreso
+            FROM venta v
+            INNER JOIN viajeTour vt ON v.viajeTour_id = vt.id
+            INNER JOIN tour t ON vt.tour_id = t.id
+            WHERE v.session_id = ?
+            ORDER BY v.id_reservacion
+        `;
+
+        const [boletos] = await db.pool.query(query, [sessionId]);
+        
+        if (boletos.length === 0) {
+            return res.status(404).json({ 
+                error: true, 
+                msg: "No se encontraron boletos para la sesión proporcionada" 
+            });
+        }
+
+        res.status(200).json({ 
+            error: false, 
+            data: boletos,
+            msg: "Boletos encontrados exitosamente"
+        });
+
+    } catch (error) {
+        console.error("Error al obtener boletos por sesión:", error);
+        res.status(500).json({ 
+            error: true, 
+            msg: "Error al obtener los boletos de la sesión",
+            details: error.message 
+        });
+    }
+});
+
+app.put('/asignar-boletos/:sessionId', async (req, res) => {
+    const sessionId = req.params.sessionId;
+    const { boletos } = req.body;
+    if (!Array.isArray(boletos)) {
+        return res.status(400).json({ 
+            error: true, 
+            msg: "Formato de datos inválido. Se esperaba un arreglo de boletos." 
+        });
+    }
+    const connection = await db.pool.getConnection();
+    
+    try {
+        await connection.beginTransaction();
+        for (const boleto of boletos) {
+            const { id, nombre_cliente, correo } = boleto;
+            
+            if (!id || !nombre_cliente || !correo) {
+                await connection.rollback();
+                return res.status(400).json({ 
+                    error: true, 
+                    msg: `Faltan campos requeridos para el boleto con ID: ${id}` 
+                });
+            }
+            // Verificar que el boleto pertenezca a la sesión
+            const [verification] = await connection.query(
+                'SELECT id FROM venta WHERE id = ? AND session_id = ?', 
+                [id, sessionId]
+            );
+            if (verification.length === 0) {
+                await connection.rollback();
+                return res.status(404).json({ 
+                    error: true, 
+                    msg: `Boleto con ID ${id} no encontrado en la sesión` 
+                });
+            }
+            // Actualizar el boleto
+            await connection.query(
+                `UPDATE venta 
+                 SET nombre_cliente = ?, correo = ?
+                 WHERE id = ? AND session_id = ?`,
+                [nombre_cliente, correo, id, sessionId]
+            );
+        }
+        await connection.commit();
+        
+        res.status(200).json({ 
+            error: false, 
+            msg: "Información de los boletos actualizada correctamente",
+            data: { boletosActualizados: boletos.length }
+        });
+    } catch (error) {
+        if (connection) {
+            await connection.rollback();
+        }
+        console.error("Error al actualizar boletos:", error);
+        res.status(500).json({ 
+            error: true, 
+            msg: "Error al actualizar la información de los boletos",
+            details: error.message 
+        });
+    } finally {
+        if (connection) {
+            connection.release();
+        }
+    }
+});
+
 // 🚀 NUEVO ENDPOINT: Verifica si una reserva específica pertenece al usuario logueado.
 // POST /venta/verificar-reserva
 // BODY: { "id_reservacion": "ID123" }
@@ -4433,6 +4631,108 @@ app.post('/stripe/cancelar-compra', async (req, res) => {
     res.json({ msj: "✅ Compra cancelada con éxito." });
 
 });
+
+app.post('/stripe/cancelar-compra-operator', async (req, res) => {
+    const { sessionId } = req.body;
+
+    if (!sessionId) {
+        return res.status(400).json({ msg: 'Faltan parámetros obligatorios.', error: true });
+    }
+
+    let fecha = getFecha();
+    let connection;
+
+    try {
+        connection = await db.pool.getConnection();
+        await connection.beginTransaction();
+
+        const [rows] = await connection.query(
+            'SELECT * FROM venta WHERE session_id = ?',
+            [sessionId]
+        );
+
+        if (rows.length === 0) {
+            await connection.rollback();
+            return res.json({ msg: 'No se encontraron ventas', error: true });
+        }
+
+        // =====================
+        // Procesar TODAS las ventas
+        // =====================
+        for (const venta of rows) {
+
+            if (venta.boletos_devueltos === 1) {
+                console.log(`⏭ Venta ${venta.id} ya estaba devuelta`);
+                continue; // saltar esta y seguir con las demás
+            }
+
+            // 1. Marcar venta como cancelada
+            await connection.query(
+                `UPDATE venta 
+                 SET boletos_devueltos = 1, status_traspaso = 99, updated_at = ? 
+                 WHERE id = ?`,
+                [fecha, venta.id]
+            );
+
+            // 2. Regresar lugares al viaje
+            const boletos = Number(venta.no_boletos) || 0;
+            await connection.query(
+                `UPDATE viajeTour 
+                 SET lugares_disp = lugares_disp + ?, updated_at = ? 
+                 WHERE id = ?`,
+                [boletos, fecha, venta.viajeTour_id]
+            );
+        }
+
+        await connection.commit();
+
+        // =====================
+        // Enviar correos (uno por cada venta)
+        // =====================
+        for (const venta of rows) {
+
+            const fechaHora = separarFechaHora(venta.fecha_comprada);
+
+            const emailHtml = `
+                <h1>Compra cancelada</h1>
+                <p>Id de la reservación ${venta.id_reservacion}</p>
+                <p>Nombre: ${venta.nombre_cliente}</p>
+                <p>Correo: ${venta.correo}</p>
+                <p>Fecha: ${fechaHora.fecha}</p>
+                <p>Hora: ${fechaHora.hora}</p>
+                <p>Boletos: ${venta.no_boletos}</p>
+            `;
+
+            await mailer.sendMail({
+                from: process.env.MAIL,
+                to: process.env.MAIL,
+                subject: "¡Compra cancelada - Museo Casa Kahlo!",
+                html: emailHtml
+            });
+
+            await mailer.sendMail({
+                from: process.env.MAIL,
+                to: venta.correo,
+                subject: "¡Compra cancelada - Museo Casa Kahlo!",
+                html: emailHtml
+            });
+
+            console.log(`⚠️ Compra cancelada: ${venta.id_reservacion}`);
+        }
+
+        res.json({
+            msj: `✅ ${rows.length} compras canceladas correctamente`
+        });
+
+    } catch (error) {
+        if (connection) await connection.rollback();
+        console.error('❌ Error procesando la cancelación:', error);
+        res.status(500).json({ error: true, msg: 'Error interno' });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
 
 app.post("/limpieza-viajes", async (req, res) => {
     const connection = db.pool; // tu conexión MySQL
