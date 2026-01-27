@@ -3962,6 +3962,7 @@ app.get('/compras/:clienteId', async (req, res) => {
         v.fecha_compra,
         v.pagado,
         v.checkin,
+        v.status_traspaso,
         t.nombre AS nombreTour, 
         vt.fecha_ida, 
         vt.fecha_regreso
