@@ -63,7 +63,7 @@ app.get('/obtener/:id', async (req, res) => {
         let tourId = req.params.id;
 
         let query = `SELECT t.id, t.nombre, titulo, thumb, precio_pp, descripcion_corta, t.descripcion, de_que_va, 
-                        conocer_mas, recomendaciones, punto_encuentro, fechas_no_disponibles, guias, t.max_pasajeros, t.min_pasajeros,
+                        conocer_mas, recomendaciones, punto_encuentro, fechas_no_disponibles,fechashorarios_no_disponibles, guias, t.max_pasajeros, t.min_pasajeros,
                         t.status, t.created_at, t.updated_at, empresa_id, categoria_id, t.ciudad, t.estado, t.duracion, e.nombre AS empresa, c.nombre AS categoria
                         FROM tour
                         AS t
@@ -367,7 +367,7 @@ app.post('/crear', imageController.upload, async (req, res) => {
 
 app.put('/set', imageController.upload, async (req, res) => {
     try {
-        let { id, nombre, titulo, precio_pp, descripcion_corta, descripcion, de_que_va, conocer_mas, recomendaciones, punto_encuentro, fechas_no_disponibles, guias, max_pasajeros, min_pasajeros, empresa_id, categoria_id, dias, ciudad, estado, duracion } = req.body
+        let { id, nombre, titulo, precio_pp, descripcion_corta, descripcion, de_que_va, conocer_mas, recomendaciones, punto_encuentro, fechas_no_disponibles, fechashorarios_no_disponibles, guias, max_pasajeros, min_pasajeros, empresa_id, categoria_id, dias, ciudad, estado, duracion } = req.body
 
         let errors = Array();
 
@@ -460,6 +460,13 @@ app.put('/set', imageController.upload, async (req, res) => {
             });
         }   
 
+        let fechashorarios = '';
+        if(Array.isArray(fechashorarios_no_disponibles) && fechashorarios_no_disponibles.length > 0){
+            fechashorarios_no_disponibles.forEach(fecha => {
+                fechashorarios += fecha + ";";
+            });
+        }   
+
         let guiasTour = JSON.stringify(guias);
         //guias.forEach(guia => {
         //    guiasTour += guia + ";";
@@ -503,7 +510,8 @@ app.put('/set', imageController.upload, async (req, res) => {
                     conocer_mas       = '${conocer_mas}', 
                     recomendaciones   = '${recomendaciones}', 
                     punto_encuentro   = '${punto_encuentro}', 
-                    fechas_no_disponibles = '${fechas}', 
+                    fechas_no_disponibles = '${fechas}',
+                    fechashorarios_no_disponibles = '${fechashorarios}',
                     guias             = '${guiasTour}', 
                     max_pasajeros     = '${max_pasajeros}', 
                     min_pasajeros     = '${min_pasajeros}', 

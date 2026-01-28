@@ -10,7 +10,6 @@ const helperName = require('../helpers/name')
 const QRCode = require('qrcode')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
-
 //funcion para validar fecha seleccionada (que no sea martes) y que la fecha no pertenezca a fechas bloqueadas
 async function validarDiaPermitido(fecha, tourId) {
     const dia = weekDay(fecha); // usa tu función existente
@@ -46,6 +45,34 @@ async function validarDiaPermitido(fecha, tourId) {
         throw error;
     }
 
+}
+
+
+//funcion para verificar si un horario específico está bloqueado
+async function verificarHorarioBloqueado(fecha, hora, tourId) {
+    // Obtener horarios bloqueados desde la base de datos
+    let query = `SELECT fechashorarios_no_disponibles FROM tour WHERE id = ${tourId}`;
+    let resultado = await db.pool.query(query);
+
+    if (!resultado[0] || resultado[0].length === 0 || !resultado[0][0].fechashorarios_no_disponibles) {
+        return false;
+    }
+
+    const fechashorariosDeshabilitados = resultado[0][0].fechashorarios_no_disponibles;
+
+    const horariosBloqueados = fechashorariosDeshabilitados
+        .split(";")
+        .filter(f => f !== "")
+        .map(f => f.trim());
+
+    // Normalizar la hora: quitar segundos si existen
+    const horaNormalizada = hora.split(':').slice(0, 2).join(':');
+    const fechaHoraStr = `${fecha} ${horaNormalizada}`;
+    
+    //console.log("validando", fecha + " " + horaNormalizada);
+    //console.log(horariosBloqueados.includes(fechaHoraStr));
+    
+    return horariosBloqueados.includes(fechaHoraStr);
 }
 
 // Función para cargar el template de correo según el idioma
@@ -907,8 +934,14 @@ app.get('/disponibilidad/:tourid/fecha/:fecha/:hora', async (req, res) => {
         //validamos que no sea martes
         await validarDiaPermitido(fecha, tourId);
 
-
         let hora = req.params.hora;
+
+        // verificamos que el horario no esté bloqueado
+        const estaBloqueado = await verificarHorarioBloqueado(fecha, hora, tourId);
+        if (estaBloqueado) {
+            return res.status(200).json({ msg: "Lugares no disponibles", error: false, disponible: false, sinReserva: false, lugares_disp: 0 });
+        }
+
         let query = `SELECT 
                         * 
                         FROM viajeTour 
@@ -944,7 +977,6 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         //verificamos que no sea martes
         await validarDiaPermitido(fecha, tourId);
 
-
         let boletos = parseInt(req.params.boletos);
 
         // Debug logs para depuración
@@ -966,6 +998,7 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         let horariosResult = await db.pool.query(query);
         let horarios = horariosResult[0];
         //console.log('[HORARIOS] horarios encontrados:', horarios);
+
 
 
         /*
@@ -993,6 +1026,16 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
                     ...horario,
                     disponible: false,
                     lugares_disp: 'sin_hora'
+                };
+            }
+
+            // Verificar si el horario está bloqueado
+            const estaBloqueado = await verificarHorarioBloqueado(fecha, horaCampo, tourId);
+            if (estaBloqueado) {
+                return {
+                    ...horario,
+                    disponible: false,
+                    lugares_disp: 0
                 };
             }
 
@@ -1046,6 +1089,15 @@ app.post('/crear', async (req, res) => {
 
         //validamos que no sea martes
         await validarDiaPermitido(fecha_ida, tourId);
+
+        // verificamos que el horario no esté bloqueado
+        const estaBloqueado = await verificarHorarioBloqueado(fecha_ida, horaCompleta, tourId);
+        if (estaBloqueado) {
+            return res.status(403).json({
+                error: true,
+                msg: `El horario ${fecha_ida} ${horaCompleta} está bloqueado y no está disponible`
+            });
+        }
 
         let today = new Date().toLocaleString('es-MX', {
             timeZone: 'America/Mexico_City',
@@ -1267,6 +1319,15 @@ app.post('/crear-admin', async (req, res) => {
 
         // validamos que no sea martes
         await validarDiaPermitido(fecha_ida, tourId);
+
+        // verificamos que el horario no esté bloqueado
+        const estaBloqueado = await verificarHorarioBloqueado(fecha_ida, horaCompleta, tourId);
+        if (estaBloqueado) {
+            return res.status(403).json({
+                error: true,
+                msg: `El horario ${fecha_ida} ${horaCompleta} está bloqueado y no está disponible`
+            });
+        }
 
         if (!correo) {
             return res.status(400).json({
@@ -1629,6 +1690,15 @@ app.post('/crear-admin-cortesia', async (req, res) => {
 
         // validamos que no sea martes
         await validarDiaPermitido(fecha_ida, tourId);
+
+        // verificamos que el horario no esté bloqueado
+        const estaBloqueado = await verificarHorarioBloqueado(fecha_ida, horaCompleta, tourId);
+        if (estaBloqueado) {
+            return res.status(403).json({
+                error: true,
+                msg: `El horario ${fecha_ida} ${horaCompleta} está bloqueado y no está disponible`
+            });
+        }
 
         //caracterizticas del boleto de cortesia
         pagado = 1;
@@ -2374,12 +2444,20 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
 
         const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = metadata;
         let fecha_ida_original = metadata.fecha_ida;
+        let horaCompleta = normalizarHora(metadata.horaCompleta);
 
         //verificamos que no sea martes
         await validarDiaPermitido(fecha_ida_original, tourId);
 
-
-        let horaCompleta = normalizarHora(metadata.horaCompleta);
+        // verificamos que el horario no esté bloqueado
+        const estaBloqueado = await verificarHorarioBloqueado(fecha_ida_original, horaCompleta, tourId);
+        if (estaBloqueado) {
+            return res.status(403).json({
+                error: true,
+                msg: `El horario ${fecha_ida_original} ${horaCompleta} está bloqueado y no está disponible`
+            });
+        }
+        
 
         // 1.- Verificar disponibilidad
         const disponible = verificarDisponibilidad(no_boletos, tourId, fecha_ida_original, horaCompleta);
@@ -2557,12 +2635,19 @@ app.post('/stripe/create-checkout-session-operator', async (req, res) => {
             tipoA: 1
         })
         let fecha_ida_original = metadata.fecha_ida;
+        let horaCompleta = normalizarHora(metadata.horaCompleta);
 
         //verificamos que no sea martes
         await validarDiaPermitido(fecha_ida_original, tourId);
 
-
-        let horaCompleta = normalizarHora(metadata.horaCompleta);
+        // verificamos que el horario no esté bloqueado
+        const estaBloqueado = await verificarHorarioBloqueado(fecha_ida_original, horaCompleta, tourId);
+        if (estaBloqueado) {
+            return res.status(403).json({
+                error: true,
+                msg: `El horario ${fecha_ida_original} ${horaCompleta} está bloqueado y no está disponible`
+            });
+        }
 
         // 1.- Verificar disponibilidad
         const disponible = verificarDisponibilidad(no_boletos, tourId, fecha_ida_original, horaCompleta);
@@ -4015,7 +4100,7 @@ app.get('/comprasByOperator/:clienteId', async (req, res) => {
 app.get('/boletos-por-session/:sessionId', async (req, res) => {
     try {
         const sessionId = req.params.sessionId;
-        
+
         let query = `
             SELECT 
                 v.id,
@@ -4039,26 +4124,26 @@ app.get('/boletos-por-session/:sessionId', async (req, res) => {
         `;
 
         const [boletos] = await db.pool.query(query, [sessionId]);
-        
+
         if (boletos.length === 0) {
-            return res.status(404).json({ 
-                error: true, 
-                msg: "No se encontraron boletos para la sesión proporcionada" 
+            return res.status(404).json({
+                error: true,
+                msg: "No se encontraron boletos para la sesión proporcionada"
             });
         }
 
-        res.status(200).json({ 
-            error: false, 
+        res.status(200).json({
+            error: false,
             data: boletos,
             msg: "Boletos encontrados exitosamente"
         });
 
     } catch (error) {
         console.error("Error al obtener boletos por sesión:", error);
-        res.status(500).json({ 
-            error: true, 
+        res.status(500).json({
+            error: true,
             msg: "Error al obtener los boletos de la sesión",
-            details: error.message 
+            details: error.message
         });
     }
 });
@@ -4067,35 +4152,35 @@ app.put('/asignar-boletos/:sessionId', async (req, res) => {
     const sessionId = req.params.sessionId;
     const { boletos } = req.body;
     if (!Array.isArray(boletos)) {
-        return res.status(400).json({ 
-            error: true, 
-            msg: "Formato de datos inválido. Se esperaba un arreglo de boletos." 
+        return res.status(400).json({
+            error: true,
+            msg: "Formato de datos inválido. Se esperaba un arreglo de boletos."
         });
     }
     const connection = await db.pool.getConnection();
-    
+
     try {
         await connection.beginTransaction();
         for (const boleto of boletos) {
             const { id, nombre_cliente, correo } = boleto;
-            
+
             if (!id || !nombre_cliente || !correo) {
                 await connection.rollback();
-                return res.status(400).json({ 
-                    error: true, 
-                    msg: `Faltan campos requeridos para el boleto con ID: ${id}` 
+                return res.status(400).json({
+                    error: true,
+                    msg: `Faltan campos requeridos para el boleto con ID: ${id}`
                 });
             }
             // Verificar que el boleto pertenezca a la sesión
             const [verification] = await connection.query(
-                'SELECT id FROM venta WHERE id = ? AND session_id = ?', 
+                'SELECT id FROM venta WHERE id = ? AND session_id = ?',
                 [id, sessionId]
             );
             if (verification.length === 0) {
                 await connection.rollback();
-                return res.status(404).json({ 
-                    error: true, 
-                    msg: `Boleto con ID ${id} no encontrado en la sesión` 
+                return res.status(404).json({
+                    error: true,
+                    msg: `Boleto con ID ${id} no encontrado en la sesión`
                 });
             }
             // Actualizar el boleto
@@ -4107,9 +4192,9 @@ app.put('/asignar-boletos/:sessionId', async (req, res) => {
             );
         }
         await connection.commit();
-        
-        res.status(200).json({ 
-            error: false, 
+
+        res.status(200).json({
+            error: false,
             msg: "Información de los boletos actualizada correctamente",
             data: { boletosActualizados: boletos.length }
         });
@@ -4118,10 +4203,10 @@ app.put('/asignar-boletos/:sessionId', async (req, res) => {
             await connection.rollback();
         }
         console.error("Error al actualizar boletos:", error);
-        res.status(500).json({ 
-            error: true, 
+        res.status(500).json({
+            error: true,
             msg: "Error al actualizar la información de los boletos",
-            details: error.message 
+            details: error.message
         });
     } finally {
         if (connection) {
