@@ -68,10 +68,10 @@ async function verificarHorarioBloqueado(fecha, hora, tourId) {
     // Normalizar la hora: quitar segundos si existen
     const horaNormalizada = hora.split(':').slice(0, 2).join(':');
     const fechaHoraStr = `${fecha} ${horaNormalizada}`;
-    
+
     //console.log("validando", fecha + " " + horaNormalizada);
     //console.log(horariosBloqueados.includes(fechaHoraStr));
-    
+
     return horariosBloqueados.includes(fechaHoraStr);
 }
 
@@ -2457,7 +2457,7 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
                 msg: `El horario ${fecha_ida_original} ${horaCompleta} está bloqueado y no está disponible`
             });
         }
-        
+
 
         // 1.- Verificar disponibilidad
         const disponible = verificarDisponibilidad(no_boletos, tourId, fecha_ida_original, horaCompleta);
@@ -4084,7 +4084,7 @@ app.get('/comprasByOperator/:clienteId', async (req, res) => {
   FROM venta v
   INNER JOIN viajeTour vt ON v.viajeTour_id = vt.id
   INNER JOIN tour t ON vt.tour_id = t.id
-  WHERE v.cliente_id = ${clienteId}
+  WHERE v.cliente_id = ${clienteId} AND v.status_traspaso = 0
   GROUP BY v.session_id
   ORDER BY fecha_compra DESC
 `;
@@ -4109,6 +4109,8 @@ app.get('/boletos-por-session/:sessionId', async (req, res) => {
                 v.total,
                 v.nombre_cliente,
                 v.correo,
+                v.nombre_cliente_asignado,
+                v.correo_asignado,
                 DATE_FORMAT(v.fecha_compra, '%Y-%m-%d %H:%i:%s') AS fecha_compra,
                 v.pagado,
                 v.checkin,
@@ -4148,9 +4150,113 @@ app.get('/boletos-por-session/:sessionId', async (req, res) => {
     }
 });
 
+// Función para enviar correo de boleto asignado con código QR
+async function enviarCorreoBoletoAsignado(boletoInfo) {
+    try {
+        const { id_reservacion, nombre_cliente, correo, fecha, hora, no_boletos, total, tipos_boletos, password } = boletoInfo;
+        
+        // Usar idioma español por defecto
+        const lang = 'es';
+        
+        // Textos en español
+        const t = {
+            ticketType: "Tipo de boleto",
+            price: "Precio",
+            quantity: "Cantidad",
+            subtotal: "Subtotal",
+            total: "Total",
+            ticketTypes: {
+                tipoA: "Entrada General"
+            }
+        };
+
+        // Parsear tipos_boletos
+        let tiposBoletos = {};
+        try {
+            tiposBoletos = JSON.parse(tipos_boletos);
+            if (typeof tiposBoletos !== 'object' || tiposBoletos === null || Array.isArray(tiposBoletos)) {
+                tiposBoletos = { "tipoA": no_boletos };
+            }
+        } catch (error) {
+            console.error('Error parseando tipos_boletos:', error);
+            tiposBoletos = { "tipoA": no_boletos };
+        }
+
+        // Generar un solo código QR para la reservación (como en handleSuccessfulPayment)
+        const qrCodeBuffer = await generateQRCode(id_reservacion);
+
+        const precios = { tipoA: 215 };
+
+        let tiposBoletosArray = Object.entries(tiposBoletos).map(([tipo, cantidad]) => ({
+            nombre: t.ticketTypes[tipo] || tipo,
+            precio: precios[tipo],
+            cantidad
+        }));
+
+        let tablaBoletos = `
+            <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
+                <tr style="background-color:#f5f5f5">
+                    <th style="text-align:left">${t.ticketType}</th>
+                    <th style="text-align:right">${t.price}</th>
+                    <th style="text-align:center">${t.quantity}</th>
+                    <th style="text-align:right">${t.subtotal}</th>
+                </tr>`;
+        tiposBoletosArray.forEach(tipo => {
+            let subtotal = Number(tipo.precio) * Number(tipo.cantidad);
+            tablaBoletos += `
+                <tr>
+                    <td style="text-align:left">${tipo.nombre}</td>
+                    <td style="text-align:right">$${Number(tipo.precio).toFixed(2)}</td>
+                    <td style="text-align:center">${Number(tipo.cantidad)}</td>
+                    <td style="text-align:right">$${Number(subtotal).toFixed(2)}</td>
+                </tr>`;
+        });
+        tablaBoletos += `
+            <tr>
+                <td colspan="2"></td>
+                <td style="text-align:center; font-weight:bold">${t.total}</td>
+                <td style="text-align:right; font-weight:bold">$${Number(total).toFixed(2)}</td>
+            </tr>
+            </table>`;
+
+        // Preparar datos para el template del correo
+        const emailData = {
+            nombre: nombre_cliente,
+            password: password, // Será undefined si el usuario ya existía, o tendrá valor si es nuevo
+            fecha: fecha,
+            horario: hora,
+            boletos: no_boletos,
+            tablaBoletos,
+            idReservacion: id_reservacion,
+            total,
+            ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
+        };
+
+        const emailHtml = getEmailTemplate(lang)(emailData);
+
+        // Enviar correo al cliente con el QR en el cuerpo del correo
+        await mailer.sendMail({
+            from: process.env.MAIL,
+            to: correo,
+            subject: "¡Confirmación de compra - Museo Casa Kahlo!",
+            text: "",
+            html: emailHtml,
+            attachments: [{
+                filename: 'qr.png',
+                content: qrCodeBuffer,
+                cid: 'qrImage'
+            }]
+        });
+
+        console.log(`✅ Correo enviado exitosamente para boleto asignado: ${id_reservacion}`);
+    } catch (error) {
+        console.error('❌ Error enviando correo de boleto asignado:', error);
+    }
+}
+
 app.put('/asignar-boletos/:sessionId', async (req, res) => {
     const sessionId = req.params.sessionId;
-    const { boletos } = req.body;
+    const { boletos, enviar_correos } = req.body;
     if (!Array.isArray(boletos)) {
         return res.status(400).json({
             error: true,
@@ -4161,6 +4267,10 @@ app.put('/asignar-boletos/:sessionId', async (req, res) => {
 
     try {
         await connection.beginTransaction();
+        
+        // Array para almacenar la información de los boletos actualizados para enviar correos
+        const boletosParaCorreo = [];
+        
         for (const boleto of boletos) {
             const { id, nombre_cliente, correo } = boleto;
 
@@ -4171,9 +4281,11 @@ app.put('/asignar-boletos/:sessionId', async (req, res) => {
                     msg: `Faltan campos requeridos para el boleto con ID: ${id}`
                 });
             }
-            // Verificar que el boleto pertenezca a la sesión
+            // Verificar que el boleto pertenezca a la sesión y obtener información completa
             const [verification] = await connection.query(
-                'SELECT id FROM venta WHERE id = ? AND session_id = ?',
+                `SELECT v.*, vt.fecha_ida, vt.tour_id, DATE_FORMAT(v.fecha_comprada, '%Y-%m-%d %H:%i:%s') AS fecha_comprada 
+                 FROM venta v INNER JOIN viajeTour vt ON v.viajeTour_id = vt.id 
+                 WHERE v.id = ? AND v.session_id = ?`,
                 [id, sessionId]
             );
             if (verification.length === 0) {
@@ -4183,15 +4295,103 @@ app.put('/asignar-boletos/:sessionId', async (req, res) => {
                     msg: `Boleto con ID ${id} no encontrado en la sesión`
                 });
             }
-            // Actualizar el boleto
+
+            const ventaData = verification[0];
+
+            //Verificamos si existe el correo en la DB
+            let clienteExiste = null;
+            let cliente_id = null;
+            let password = null;
+
+            let query = `SELECT * FROM usuario WHERE correo='${correo}'`;
+
+            let existCorreo = await connection.query(query);
+
+            if (existCorreo[0].length >= 1) {
+                clienteExiste = true;
+                
+                cliente_id = existCorreo[0][0].id;
+            } else {
+                clienteExiste = false;
+                //generamos la fecha
+                let today = new Date().toLocaleString('es-MX', {
+                    timeZone: 'America/Mexico_City',
+                    hour12: false // formato 24 horas sin AM/PM
+                });
+                // Ejemplo: "29/09/2025, 23:42:08"
+                let [datePart, timePart] = today.split(', ');
+                let [day, month, year] = datePart.split('/');
+                let [hours, minutes, seconds] = timePart.split(':');
+                month = month.padStart(2, '0');
+                day = day.padStart(2, '0');
+                hours = hours.padStart(2, '0');
+                minutes = minutes.padStart(2, '0');
+                seconds = seconds.padStart(2, '0');
+                let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+                //generamos un password aleatorio
+                password = generarPassword();
+                const salt = await bcryptjs.genSalt(10);
+                const hashedPassword = await bcryptjs.hash(password, salt);
+
+                //dividimos el nombre_cliente en nombre y apellidos
+                let nombre = nombre_cliente.split(' ')[0];
+                let apellidos = nombre_cliente.split(' ').slice(1).join(' ');
+
+                //damos de alta al cliente
+                query = `INSERT INTO usuario 
+                                (nombres, apellidos, correo, password, isClient, created_at, updated_at) 
+                                VALUES 
+                                ('${nombre}', '${apellidos}', '${correo}', '${hashedPassword}', 1, '${fecha}', '${fecha}')`;
+
+
+                let newClient = await connection.query(query);
+                cliente_id = newClient[0].insertId;
+            }
+
+            // Actualizar el boleto con los nuevos campos
             await connection.query(
                 `UPDATE venta 
-                 SET nombre_cliente = ?, correo = ?
+                 SET nombre_cliente_asignado = ?, correo_asignado = ?, cliente_id_asignado = ?
                  WHERE id = ? AND session_id = ?`,
-                [nombre_cliente, correo, id, sessionId]
+                [nombre_cliente, correo, cliente_id, id, sessionId]
             );
+
+            // Si se deben enviar correos, guardar la información del boleto
+            if (enviar_correos === true) {
+                //console.log(ventaData.fecha_comprada);
+                const { fecha, hora } = separarFechaHora(ventaData.fecha_comprada);
+                const horaCompleta = normalizarHora(hora);
+                
+                boletosParaCorreo.push({
+                    id: id,
+                    id_reservacion: ventaData.id_reservacion,
+                    nombre_cliente: nombre_cliente,
+                    correo: correo,
+                    fecha: fecha,
+                    hora: horaCompleta,
+                    no_boletos: ventaData.no_boletos,
+                    total: ventaData.total,
+                    tipos_boletos: ventaData.tipos_boletos,
+                    password: password // Solo tendrá valor si se creó un nuevo usuario
+                });
+            }
         }
         await connection.commit();
+
+        // ==========================
+        // Enviar correos fuera de la transacción
+        // ==========================
+        if (enviar_correos === true && boletosParaCorreo.length > 0) {
+            for (const boletoInfo of boletosParaCorreo) {
+                try {
+                    await enviarCorreoBoletoAsignado(boletoInfo);
+                } catch (error) {
+                    console.error(`Error enviando correo para boleto ${boletoInfo.id_reservacion}:`, error);
+                    // Continuar con el siguiente boleto sin romper la ejecución
+                }
+            }
+        }
 
         res.status(200).json({
             error: false,

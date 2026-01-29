@@ -74,8 +74,85 @@ LEFT JOIN
     viajeTour AS vt ON v.viajeTour_id = vt.id
 LEFT JOIN 
     tour AS t ON vt.tour_id = t.id
+LEFT JOIN 
+    usuario AS u ON v.cliente_id = u.id    
 WHERE
-    v.status_traspaso <> 99    
+    v.status_traspaso <> 99 AND u.isOperator = 0   
+ORDER BY
+    v.fecha_compra DESC`;
+        let tours = await db.pool.query(query);
+
+        res.status(200).json(tours[0]);
+
+    } catch (error) {
+        res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
+    }
+})
+
+app.get('/viaje-Tours-Operadores', async (req, res) => {
+    try {
+        let query = `SELECT
+    COALESCE(t.nombre, 'Tour Desconocido') AS "nombre_del_tour",      
+    v.id_reservacion AS "id_reservacion",
+    v.nombre_cliente AS "nombre_visitante", 
+    v.nombre_cliente_asignado AS "nombre_cliente_asignado",
+    v.correo AS correo,
+    v.correo_asignado AS "correo_asignado",
+    v.no_boletos AS "no_boletos",
+    v.checkin AS checkin,
+        
+    COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(v.tipos_boletos, '$.tipoA')) AS UNSIGNED), 0) AS "total_tipo_A",
+    COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(v.tipos_boletos, '$.tipoB')) AS UNSIGNED), 0) AS "total_tipo_B",
+    COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(v.tipos_boletos, '$.tipoC')) AS UNSIGNED), 0) AS "total_tipo_C",
+    
+      
+    DATE_FORMAT(vt.fecha_ida, '%Y-%m-%d %H:%i:%s') AS "fecha_ida",
+    DATE_FORMAT(v.updated_at, '%Y-%m-%d %H:%i:%s')  AS "fecha_visita",
+    DATE_FORMAT(v.fecha_compra, '%Y-%m-%d %H:%i:%s') AS "fecha_compra",
+        
+    v.total AS "total_de_compra",
+    
+    CASE
+        WHEN v.status_traspaso = 99 THEN 'No Aplica'
+        WHEN v.status_traspaso = 98 THEN 'Cortesía'
+        WHEN v.session_id IS NULL 
+             AND (v.metodo_pago = 'Efectivo' OR v.metodo_pago IS NULL)
+            THEN 'Efectivo'
+        WHEN v.session_id IS NULL 
+             AND (v.metodo_pago = 'Pos_tarjeta')
+            THEN 'Pos Tarjeta'
+        ELSE 'Stripe'
+    END AS tipo_compra,
+    
+    CASE
+        WHEN v.status_traspaso = 99 THEN 0.00      
+        WHEN v.session_id IS NULL 
+            AND (v.metodo_pago = 'Efectivo' OR v.metodo_pago IS NULL)
+            THEN v.total
+        ELSE 0.00
+    END AS cobrado_efectivo,
+
+    CASE
+        WHEN v.status_traspaso = 99 THEN 0.00      
+        WHEN v.session_id IS NULL AND v.metodo_pago = 'Pos_tarjeta' THEN v.total
+        ELSE 0.00
+    END AS "cobrado_tarjeta",
+    
+    CASE
+        WHEN v.status_traspaso = 99 THEN 0.00      
+        WHEN v.session_id IS NOT NULL THEN v.total
+        ELSE 0.00
+    END AS "cobrado_stripe"
+FROM
+    venta AS v
+LEFT JOIN 
+    viajeTour AS vt ON v.viajeTour_id = vt.id
+LEFT JOIN 
+    tour AS t ON vt.tour_id = t.id
+LEFT JOIN 
+    usuario AS u ON v.cliente_id = u.id    
+WHERE
+    v.status_traspaso <> 99 AND u.isOperator = 1   
 ORDER BY
     v.fecha_compra DESC`;
         let tours = await db.pool.query(query);
@@ -145,8 +222,10 @@ LEFT JOIN
     viajeTour AS vt ON v.viajeTour_id = vt.id
 LEFT JOIN 
     tour AS t ON vt.tour_id = t.id
+LEFT JOIN 
+    usuario AS u ON v.cliente_id = u.id   
 WHERE
-    v.status_traspaso = 99    
+    v.status_traspaso = 99  AND u.isOperator = 0      
 ORDER BY
     v.fecha_compra DESC`;
         let tours = await db.pool.query(query);
@@ -420,7 +499,90 @@ INNER JOIN
 INNER JOIN
     usuario AS ad ON ad.empresa_id = e.id     
 WHERE 
-    t.empresa_id=${empresaId} AND ad.id=${adminId} AND v.status_traspaso <> 99
+    t.empresa_id=${empresaId} AND ad.id=${adminId} AND v.status_traspaso <> 99 AND ad.isOperator = 0
+ORDER BY
+    v.fecha_compra DESC`;
+
+        let tour = await db.pool.query(query);
+
+        res.status(200).json(tour[0]);
+
+    } catch (error) {
+        res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
+    }
+})
+
+app.get('/historialByEmpresaOperadores/:emId/admin/:adId', async (req, res) => {
+    try {
+        let empresaId = req.params.emId;
+        let adminId = req.params.adId;
+
+        let query = `SELECT
+    COALESCE(t.nombre, 'Tour Desconocido') AS "nombre_del_tour",      
+    v.id_reservacion AS "id_reservacion",
+    v.nombre_cliente AS "nombre_visitante", 
+    v.nombre_cliente_asignado AS "nombre_cliente_asignado",
+    v.correo AS correo,
+    v.correo_asignado AS "correo_asignado",
+    v.no_boletos AS "no_boletos",
+    v.checkin AS checkin,
+        
+    COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(v.tipos_boletos, '$.tipoA')) AS UNSIGNED), 0) AS "total_tipo_A",
+    COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(v.tipos_boletos, '$.tipoB')) AS UNSIGNED), 0) AS "total_tipo_B",
+    COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(v.tipos_boletos, '$.tipoC')) AS UNSIGNED), 0) AS "total_tipo_C",
+    
+      
+    DATE_FORMAT(vt.fecha_ida, '%Y-%m-%d %H:%i:%s') AS "fecha_ida",
+    DATE_FORMAT(v.updated_at, '%Y-%m-%d %H:%i:%s')  AS "fecha_visita",
+    DATE_FORMAT(v.fecha_compra, '%Y-%m-%d %H:%i:%s') AS "fecha_compra",
+    
+
+        
+    v.total AS "total_de_compra",
+    
+    CASE
+        WHEN v.status_traspaso = 99 THEN 'No Aplica'
+        WHEN v.status_traspaso = 98 THEN 'Cortesía'
+        WHEN v.session_id IS NULL 
+             AND (v.metodo_pago = 'Efectivo' OR v.metodo_pago IS NULL)
+            THEN 'Efectivo'
+        WHEN v.session_id IS NULL 
+             AND (v.metodo_pago = 'Pos_tarjeta')
+            THEN 'Pos Tarjeta'
+        ELSE 'Stripe'
+    END AS tipo_compra,
+    
+    CASE
+        WHEN v.status_traspaso = 99 THEN 0.00      
+        WHEN v.session_id IS NULL 
+             AND (v.metodo_pago = 'Efectivo' OR v.metodo_pago IS NULL)
+            THEN v.total
+        ELSE 0.00
+    END AS cobrado_efectivo,
+
+    CASE
+        WHEN v.status_traspaso = 99 THEN 0.00      
+        WHEN v.session_id IS NULL AND v.metodo_pago = 'Pos_tarjeta' THEN v.total
+        ELSE 0.00
+    END AS "cobrado_tarjeta",
+    
+    CASE
+        WHEN v.status_traspaso = 99 THEN 0.00      
+        WHEN v.session_id IS NOT NULL THEN v.total
+        ELSE 0.00
+    END AS "cobrado_stripe"
+FROM
+    venta AS v
+LEFT JOIN 
+    viajeTour AS vt ON v.viajeTour_id = vt.id
+LEFT JOIN 
+    tour AS t ON vt.tour_id = t.id
+INNER JOIN 
+    empresa AS e ON t.empresa_id = e.id
+INNER JOIN
+    usuario AS ad ON ad.empresa_id = e.id     
+WHERE 
+    t.empresa_id=${empresaId} AND ad.id=${adminId} AND v.status_traspaso <> 99 AND ad.isOperator = 1
 ORDER BY
     v.fecha_compra DESC`;
 
@@ -501,7 +663,7 @@ INNER JOIN
 INNER JOIN
     usuario AS ad ON ad.empresa_id = e.id     
 WHERE 
-    t.empresa_id=${empresaId} AND ad.id=${adminId} AND v.status_traspaso = 99
+    t.empresa_id=${empresaId} AND ad.id=${adminId} AND v.status_traspaso = 99 AND ad.isOperator = 0
 ORDER BY
     v.fecha_compra DESC`;
 
