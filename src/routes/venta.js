@@ -4197,26 +4197,17 @@ async function enviarCorreoBoletoAsignado(boletoInfo) {
             <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
                 <tr style="background-color:#f5f5f5">
                     <th style="text-align:left">${t.ticketType}</th>
-                    <th style="text-align:right">${t.price}</th>
                     <th style="text-align:center">${t.quantity}</th>
-                    <th style="text-align:right">${t.subtotal}</th>
                 </tr>`;
         tiposBoletosArray.forEach(tipo => {
             let subtotal = Number(tipo.precio) * Number(tipo.cantidad);
             tablaBoletos += `
                 <tr>
                     <td style="text-align:left">${tipo.nombre}</td>
-                    <td style="text-align:right">$${Number(tipo.precio).toFixed(2)}</td>
                     <td style="text-align:center">${Number(tipo.cantidad)}</td>
-                    <td style="text-align:right">$${Number(subtotal).toFixed(2)}</td>
                 </tr>`;
         });
         tablaBoletos += `
-            <tr>
-                <td colspan="2"></td>
-                <td style="text-align:center; font-weight:bold">${t.total}</td>
-                <td style="text-align:right; font-weight:bold">$${Number(total).toFixed(2)}</td>
-            </tr>
             </table>`;
 
         // Preparar datos para el template del correo
