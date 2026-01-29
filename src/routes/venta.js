@@ -4054,7 +4054,7 @@ app.get('/compras/:clienteId', async (req, res) => {
       FROM venta v
       INNER JOIN viajeTour vt ON v.viajeTour_id = vt.id
       INNER JOIN tour t ON vt.tour_id = t.id
-      WHERE v.cliente_id = ${clienteId}
+      WHERE v.cliente_id = ${clienteId} OR v.cliente_id_asignado = ${clienteId}
       ORDER BY v.fecha_compra DESC
     `;
         let compras = await db.pool.query(query);
