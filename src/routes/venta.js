@@ -234,10 +234,11 @@ const verificarDisponibilidad = async (no_boletos, tourId, fecha, hora) => {
     //si disponibilidad == 0 significa que no hay ningun viajeTour y entonces si hay lugares
     if (disponibilidad[0].length > 0) {
         disponibilidad = disponibilidad[0][0];
-        if (disponibilidad.lugares_disp + Number(no_boletos) > 12) {
+        if (disponibilidad.lugares_disp < Number(no_boletos)) {
             return false;
         }
     }
+
     return true;
 }
 
@@ -1019,9 +1020,9 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         // Para cada horario, verificar disponibilidad
         let horariosDisponibles = await Promise.all(horarios.map(async (horario) => {
             // Soportar ambos nombres de campo: hora y hora_salida
-            
+
             let horaCampo = (horario.hora_salida).split(':').slice(0, 2).join(':');
-            
+
             if (!horaCampo || typeof horaCampo !== 'string') {
                 // Si no hay hora válida, ignorar este horario
                 return {
@@ -4159,10 +4160,10 @@ app.get('/boletos-por-session/:sessionId', async (req, res) => {
 async function enviarCorreoBoletoAsignado(boletoInfo) {
     try {
         const { id_reservacion, nombre_cliente, correo, fecha, hora, no_boletos, total, tipos_boletos, password } = boletoInfo;
-        
+
         // Usar idioma español por defecto
         const lang = 'es';
-        
+
         // Textos en español
         const t = {
             ticketType: "Tipo de boleto",
@@ -4263,10 +4264,10 @@ app.put('/asignar-boletos/:sessionId', async (req, res) => {
 
     try {
         await connection.beginTransaction();
-        
+
         // Array para almacenar la información de los boletos actualizados para enviar correos
         const boletosParaCorreo = [];
-        
+
         for (const boleto of boletos) {
             const { id, nombre_cliente, correo } = boleto;
 
@@ -4305,7 +4306,7 @@ app.put('/asignar-boletos/:sessionId', async (req, res) => {
 
             if (existCorreo[0].length >= 1) {
                 clienteExiste = true;
-                
+
                 cliente_id = existCorreo[0][0].id;
             } else {
                 clienteExiste = false;
@@ -4358,7 +4359,7 @@ app.put('/asignar-boletos/:sessionId', async (req, res) => {
                 //console.log(ventaData.fecha_comprada);
                 const { fecha, hora } = separarFechaHora(ventaData.fecha_comprada);
                 const horaCompleta = normalizarHora(hora);
-                
+
                 boletosParaCorreo.push({
                     id: id,
                     id_reservacion: ventaData.id_reservacion,
@@ -5157,6 +5158,41 @@ app.post("/limpieza-viajes", async (req, res) => {
             detalles: error.message
         });
     }
+});
+
+
+app.get('/verificarDisponibilidad-test', async (req, res) => {
+
+
+    let { no_boletos, tourId, fecha, hora } = req.body;
+
+
+    hora = hora.split(':');
+
+    if (no_boletos > 12) {
+        return false;
+    }
+
+    let query = `SELECT 
+                        * 
+                        FROM viajeTour 
+                        WHERE CAST(fecha_ida AS DATE) = '${fecha}'
+                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
+                        AND tour_id = ${tourId};`;
+    console.log(query);
+    let disponibilidad = await db.pool.query(query);
+    console.log(disponibilidad);
+
+    //si disponibilidad == 0 significa que no hay ningun viajeTour y entonces si hay lugares
+    if (disponibilidad[0].length > 0) {
+        disponibilidad = disponibilidad[0][0];
+        if (disponibilidad.lugares_disp < Number(no_boletos)) {
+            res.json({ disponible: false });
+        }
+
+
+    }
+    res.json({ disponible: true });
 });
 
 
