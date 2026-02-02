@@ -1019,7 +1019,9 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         // Para cada horario, verificar disponibilidad
         let horariosDisponibles = await Promise.all(horarios.map(async (horario) => {
             // Soportar ambos nombres de campo: hora y hora_salida
-            let horaCampo = horario.hora || horario.hora_salida;
+            
+            let horaCampo = (horario.hora_salida).split(':').slice(0, 2).join(':');
+            
             if (!horaCampo || typeof horaCampo !== 'string') {
                 // Si no hay hora válida, ignorar este horario
                 return {
@@ -1043,11 +1045,14 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
             //let queryViaje = `SELECT * FROM viajeTour WHERE CAST(fecha_ida AS DATE) = '${fecha}' AND HOUR(CAST(fecha_ida AS TIME)) = '${hora}' AND tour_id = ${tourId}`;
             let queryViaje = `SELECT * FROM viajeTour WHERE CAST(fecha_ida AS DATE) = '${fecha}' AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${horaCampo}' AND tour_id = ${tourId}`;
 
+            console.log(queryViaje);
             //console.log('[HORARIOS] query viajeTour:', queryViaje);
             let viajeResult = await db.pool.query(queryViaje);
             //console.log('[HORARIOS] viajeResult:', viajeResult[0]);
             let disponible = true;
             let lugares_disp = null;
+
+
             if (viajeResult[0].length > 0) {
                 let viaje = viajeResult[0][0];
                 lugares_disp = viaje.lugares_disp;
