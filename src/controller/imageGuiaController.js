@@ -17,4 +17,25 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage })
 
-exports.upload = upload.fields([{ name: 'foto', maxCount: 1 }, { name: 'identificacion', maxCount: 1 }])
+const uploadFields = upload.fields([
+  { name: 'foto', maxCount: 1 },
+  { name: 'identificacion', maxCount: 1 }
+]);
+
+exports.upload = (req, res, next) => {
+
+  // Si no es multipart, no procesar nada
+  if (!req.headers['content-type'] || !req.headers['content-type'].includes('multipart/form-data')) {
+    return next();
+  }
+
+  uploadFields(req, res, (err) => {
+    // Si hay error, lo ignoramos y seguimos
+    if (err) {
+      console.log("Multer ignorado:", err.message);
+      return next();
+    }
+
+    next();
+  });
+};;

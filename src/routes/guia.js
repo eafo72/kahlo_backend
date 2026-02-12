@@ -18,7 +18,7 @@ const fetch = require("node-fetch");
 //Trae todos los guias de la DB
 app.get('/guias', async (req, res) => {
     try {
-        let query = `SELECT u.id, nombres, apellidos, u.telefono, u.correo, isGuia, foto, identificacion, u.status, u.updated_at, empresa_id, e.nombre AS empresa
+        let query = `SELECT u.id, nombres, apellidos, u.telefono, u.correo, isGuia, foto, identificacion, u.status, u.updated_at, empresa_id, cargo, area, nss, e.nombre AS empresa
                         FROM usuario 
                         AS u
                         INNER JOIN  empresa 
@@ -38,7 +38,7 @@ app.get('/obtenerByEmpresa/:id', async (req, res) => {
     try {
         let empresaId = req.params.id;
 
-        let query = `SELECT u.id, nombres, apellidos, u.telefono, u.correo, isGuia, foto, identificacion, u.status, u.updated_at, empresa_id, e.nombre AS empresa
+        let query = `SELECT u.id, nombres, apellidos, u.telefono, u.correo, isGuia, foto, identificacion, u.status, u.updated_at, empresa_id, cargo, area, nss, e.nombre AS empresa
                         FROM usuario 
                         AS u
                         INNER JOIN  empresa 
@@ -60,7 +60,7 @@ app.get('/obtener/:id', async (req, res) => {
     try {
         let guiaId = req.params.id;
 
-        let query = `SELECT u.id, nombres, apellidos, u.telefono, u.correo, isGuia, foto, identificacion, u.status, u.updated_at, empresa_id, e.nombre AS empresa
+        let query = `SELECT u.id, nombres, apellidos, u.telefono, u.correo, isGuia, foto, identificacion, u.status, u.updated_at, empresa_id, cargo, area, nss, e.nombre AS empresa
                         FROM usuario 
                         AS u
                         INNER JOIN  empresa 
@@ -79,270 +79,307 @@ app.get('/obtener/:id', async (req, res) => {
 
 
 app.post('/crear', imageController.upload, async (req, res) => {
-    try {
-        let { nombres, apellidos, telefono, correo, password, empresa_id, tipoColaborador } = req.body
+  try {
+    let { nombres, apellidos, telefono, correo, password, empresa_id, tipoColaborador, cargo, area, nss } = req.body;
 
-        let errors = Array();
+    let errors = [];
 
-        if (!nombres) {
-            errors.push({ msg: "El campo nombres debe de contener un valor" });
-        }
-        if (!apellidos) {
-            errors.push({ msg: "El campo apellidos debe de contener un valor" });
-        }
-        if (!correo) {
-            errors.push({ msg: "El campo correo debe de contener un valor" });
-        }
-        if (!password) {
-            errors.push({ msg: "El campo password debe de contener un valor" });
-        }
-        if (!empresa_id) {
-            errors.push({ msg: "El campo empresa_id debe de contener un valor" });
-        }
-        if (!tipoColaborador) {
-            tipoColaborador = 'Colaborador';
-        }
+    if (!nombres) errors.push({ msg: "El campo nombres debe de contener un valor" });
+    if (!apellidos) errors.push({ msg: "El campo apellidos debe de contener un valor" });
+    if (!correo) errors.push({ msg: "El campo correo debe de contener un valor" });
+    if (!password) errors.push({ msg: "El campo password debe de contener un valor" });
+    if (!empresa_id) errors.push({ msg: "El campo empresa_id debe de contener un valor" });
+    if (!tipoColaborador) tipoColaborador = 'Colaborador';
 
-        if (!telefono) {
-            telefono = null;
-        }
-
-        if (errors.length >= 1) {
-
-            return res.status(400)
-                .json({
-                    msg: 'Errores en los parametros',
-                    error: true,
-                    details: errors
-                });
-
-        }
-
-        //Verificamos no exista el correo en la DB
-        let query = `SELECT *
-                        FROM usuario 
-                        WHERE correo='${correo}'`;
-
-        let existCorreo = await db.pool.query(query);
-
-        if (existCorreo[0].length >= 1) {
-            return res.status(400)
-                .json({
-                    msg: 'El correo ya esta registrado',
-                    error: true,
-                });
-        }
+    if (!cargo) errors.push({ msg: "El campo cargo debe de contener un valor" });
+    if (!area) errors.push({ msg: "El campo area debe de contener un valor" });
+    if (!nss) errors.push({ msg: "El campo nss debe de contener un valor" });
 
 
-        const salt = await bcryptjs.genSalt(10);
-        const hashedPassword = await bcryptjs.hash(password, salt);
+    if (!telefono) telefono = null;
 
-        let today = new Date();
-        let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
-        let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
-        let fecha = date + ' ' + time;
+    if (errors.length >= 1) {
+      return res.status(400).json({
+        msg: 'Errores en los parametros',
+        error: true,
+        details: errors
+      });
+    }
 
-        let tituloFoto = `${date}-${req.files['foto'][0].originalname}`;
-        let foto1 = `${process.env.URLFRONT}/images/guias/${tituloFoto}`;
+    // Verificamos no exista el correo en la DB
+    let query = `SELECT * FROM usuario WHERE correo='${correo}'`;
+    let existCorreo = await db.pool.query(query);
 
-        let tituloIdentificacion = `${date}-${req.files['identificacion'][0].originalname}`;
-        let identificacion1 = `${process.env.URLFRONT}/images/guias/${tituloIdentificacion}`;
+    if (existCorreo[0].length >= 1) {
+      return res.status(400).json({
+        msg: 'El correo ya esta registrado',
+        error: true,
+      });
+    }
 
-        let file = fs.readFileSync(req.files['foto'][0].path, { encoding: "base64" });
-        let file2 = fs.readFileSync(req.files['identificacion'][0].path, { encoding: "base64" });
+    const salt = await bcryptjs.genSalt(10);
+    const hashedPassword = await bcryptjs.hash(password, salt);
 
-        let formdata = new FormData();
+    let today = new Date();
+    let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
+    let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
+    let fecha = date + ' ' + time;
+
+    // ============================
+    // VALIDAMOS ARCHIVOS
+    // ============================
+    let foto1 = null;
+    let identificacion1 = null;
+
+    let existeFoto = req.files?.foto && req.files.foto.length > 0;
+    let existeIdentificacion = req.files?.identificacion && req.files.identificacion.length > 0;
+
+    // ============================
+    // SI HAY ARCHIVOS, LOS SUBIMOS
+    // ============================
+    if (existeFoto || existeIdentificacion) {
+
+      let formdata = new FormData();
+
+      if (existeFoto) {
+        let tituloFoto = `${date}-${req.files.foto[0].originalname}`;
+        foto1 = `${process.env.URLFRONT}/images/guias/${tituloFoto}`;
+
+        let file = fs.readFileSync(req.files.foto[0].path, { encoding: "base64" });
+
         formdata.append('foto', file);
         formdata.append('nombre_foto', tituloFoto);
+      }
+
+      if (existeIdentificacion) {
+        let tituloIdentificacion = `${date}-${req.files.identificacion[0].originalname}`;
+        identificacion1 = `${process.env.URLFRONT}/images/guias/${tituloIdentificacion}`;
+
+        let file2 = fs.readFileSync(req.files.identificacion[0].path, { encoding: "base64" });
+
         formdata.append('identificacion', file2);
         formdata.append('nombre_identificacion', tituloIdentificacion);
+      }
 
-        let response = await fetch(`${process.env.URLFRONT}/images/guias/api_guias_base64.php`, {
-            method: 'POST',
-            body: formdata
-        });
+      let response = await fetch(`${process.env.URLFRONT}/images/guias/api_guias_base64.php`, {
+        method: 'POST',
+        body: formdata
+      });
 
-        let result = await response.json();
+      let result = await response.json();
 
-        result.forEach(element => {
-            if (element.error) {
-                return res.status(400).json({ error: true, msg: "No se agregaron las fotos, intenterlo nuevamente", details: element.msg })
-            }
-        });
-
-        if (tipoColaborador == 'Colaborador') {
-            query = `INSERT INTO usuario 
-                        (nombres, apellidos, 
-                        telefono, correo, password,
-                        isGuia, foto, 
-                        identificacion, empresa_id,
-                        created_at, updated_at) 
-                        VALUES 
-                        ('${nombres}', '${apellidos}', 
-                        '${telefono}','${correo}', 
-                        '${hashedPassword}', 1, '${foto1}', 
-                        '${identificacion1}', '${empresa_id}',
-                        '${fecha}', '${fecha}')`;
-
-        } else if (tipoColaborador == 'Especialista') {
-            query = `INSERT INTO usuario 
-                        (nombres, apellidos, 
-                        telefono, correo, password,
-                        isSpecialist, foto, 
-                        identificacion, empresa_id,
-                        created_at, updated_at) 
-                        VALUES 
-                        ('${nombres}', '${apellidos}', 
-                        '${telefono}','${correo}', 
-                        '${hashedPassword}', 1, '${foto1}', 
-                        '${identificacion1}', '${empresa_id}',
-                        '${fecha}', '${fecha}')`;
-
+      for (let element of result) {
+        if (element.error) {
+          return res.status(400).json({
+            error: true,
+            msg: "No se agregaron las fotos, intentarlo nuevamente",
+            details: element.msg
+          });
         }
-
-
-
-        result = await db.pool.query(query);
-        result = result[0];
-
-        const payload = {
-            guia: {
-                id: result.insertId,
-            }
-        }
-
-        jwt.sign(payload, process.env.SECRET, { expiresIn: 36000 }, (error, token) => {
-            if (error) throw error
-            res.status(200).json({ error: false, token: token })
-            //res.json(respuestaDB)
-        })
-
-    } catch (error) {
-        res.status(400).json({ error: true, details: error })
+      }
     }
-})
+
+    // ============================
+    // PREPARAMOS VALORES PARA SQL
+    // ============================
+    let fotoDB = foto1 ? `'${foto1}'` : `NULL`;
+    let identificacionDB = identificacion1 ? `'${identificacion1}'` : `NULL`;
+
+    // ============================
+    // INSERT
+    // ============================
+    if (tipoColaborador == 'Colaborador') {
+
+      query = `INSERT INTO usuario 
+          (nombres, apellidos, telefono, correo, password,
+          isGuia, foto, identificacion, empresa_id, cargo, area, nss,
+          created_at, updated_at) 
+          VALUES 
+          ('${nombres}', '${apellidos}', 
+          ${telefono ? `'${telefono}'` : 'NULL'},
+          '${correo}', 
+          '${hashedPassword}', 
+          1, ${fotoDB}, ${identificacionDB}, '${empresa_id}', '${cargo}', '${area}', '${nss}',
+          '${fecha}', '${fecha}')`;
+
+    } else if (tipoColaborador == 'Especialista') {
+
+      query = `INSERT INTO usuario 
+          (nombres, apellidos, telefono, correo, password,
+          isSpecialist, foto, identificacion, empresa_id, cargo, area, nss,
+          created_at, updated_at) 
+          VALUES 
+          ('${nombres}', '${apellidos}', 
+          ${telefono ? `'${telefono}'` : 'NULL'},
+          '${correo}', 
+          '${hashedPassword}', 
+          1, ${fotoDB}, ${identificacionDB}, '${empresa_id}', '${cargo}', '${area}', '${nss}',
+          '${fecha}', '${fecha}')`;
+
+    }
+
+    let insertResult = await db.pool.query(query);
+    insertResult = insertResult[0];
+
+    const payload = {
+      guia: {
+        id: insertResult.insertId,
+      }
+    };
+
+    jwt.sign(payload, process.env.SECRET, { expiresIn: 36000 }, (error, token) => {
+      if (error) throw error;
+      res.status(200).json({ error: false, token: token });
+    });
+
+  } catch (error) {
+    res.status(400).json({
+      error: true,
+      message: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 
 app.put('/set', imageController.upload, async (req, res) => {
-    try {
-        let { id, nombres, apellidos, telefono, empresa_id } = req.body
+  try {
+    let { id, nombres, apellidos, telefono, empresa_id, cargo, area, nss } = req.body;
 
-        let errors = Array();
+    let errors = [];
 
-        if (!id) {
-            errors.push({ msg: "El campo id debe de contener un valor valido" });
-        }
-        if (!nombres) {
-            errors.push({ msg: "El campo nombres debe de contener un valor" });
-        }
-        if (!apellidos) {
-            errors.push({ msg: "El campo apellidos debe de contener un valor" });
-        }
-        if (!empresa_id) {
-            errors.push({ msg: "El campo empresa_id debe de contener un valor" });
-        }
-        if (!telefono) {
-            telefono = null;
-        }
+    if (!id) errors.push({ msg: "El campo id debe de contener un valor valido" });
+    if (!nombres) errors.push({ msg: "El campo nombres debe de contener un valor" });
+    if (!apellidos) errors.push({ msg: "El campo apellidos debe de contener un valor" });
+    if (!empresa_id) errors.push({ msg: "El campo empresa_id debe de contener un valor" });
+    if (!cargo) errors.push({ msg: "El campo cargo debe de contener un valor" });
+    if (!area) errors.push({ msg: "El campo area debe de contener un valor" });
+    if (!nss) errors.push({ msg: "El campo nss debe de contener un valor" });
 
-        if (errors.length >= 1) {
 
-            return res.status(400)
-                .json({
-                    msg: 'Errores en los parametros',
-                    error: true,
-                    details: errors
-                });
+    if (!telefono) telefono = null;
 
-        }
-
-        let today = new Date();
-        let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
-        let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
-        let fecha = date + ' ' + time;
-
-        let query = `UPDATE usuario SET
-                        nombres          = '${nombres}', 
-                        apellidos        = '${apellidos}',
-                        telefono         = '${telefono}',`;
-
-        let formdata = new FormData();
-        let noFotos = 0;
-
-        if (req.files['foto']) {
-            noFotos++;
-
-            let tituloFoto = `${date}-${req.files['foto'][0].originalname}`;
-            let foto1 = `${process.env.URLFRONT}/images/guias/${tituloFoto}`;
-
-            let file = fs.readFileSync(req.files['foto'][0].path, { encoding: "base64" });
-
-            formdata.append('foto', file);
-            formdata.append('nombre_foto', tituloFoto);
-
-            query = query + `foto = '${foto1}',`;
-
-        }
-
-        if (req.files['identificacion']) {
-
-            noFotos++;
-            let tituloIdentificacion = `${date}-${req.files['identificacion'][0].originalname}`;
-            let identificacion1 = `${process.env.URLFRONT}/images/guias/${tituloIdentificacion}`;
-
-            let file2 = fs.readFileSync(req.files['identificacion'][0].path, { encoding: "base64" });
-
-            formdata.append('identificacion', file2);
-            formdata.append('nombre_identificacion', tituloIdentificacion);
-
-            query = query + `identificacion  = '${identificacion1}',`;
-
-        }
-
-        if (req.files['foto'] || req.files['identificacion']) {
-
-            let response = await fetch(`${process.env.URLFRONT}/images/guias/api_guias_base64.php`, {
-                method: 'POST',
-                body: formdata
-            });
-
-            let result = await response.json();
-
-            let noErrors = 0;
-
-            result.forEach(element => {
-                if (element.error) {
-                    noErrors++;
-                    //return res.status(400).json({ error: true, msg: "No se agregaron las fotos, intenterlo nuevamente", details: element.msg })
-                }
-            });
-
-            if (noErrors >= 4 || (noFotos >= 2 && noErrors >= 2) || noErrors == 1) {
-                return res.status(400).json({ error: true, msg: "No se agregaron las fotos, intenterlo nuevamente" })
-            }
-            query = query +
-                `empresa_id      = '${empresa_id}', 
-                        updated_at       = '${fecha}'
-                        WHERE id         = ${id}`;
-
-        }
-        else {
-
-            query = query +
-                `empresa_id      = '${empresa_id}', 
-                        updated_at       = '${fecha}'
-                        WHERE id         = ${id}`;
-
-        }
-
-        let result = await db.pool.query(query);
-        result = result[0];
-
-        res.status(200).json({ error: false, msg: `Registro actualizado con exito, fotos actualizadas: ${noFotos}` })
-
-    } catch (error) {
-        res.status(400).json({ error: true, details: error })
+    if (errors.length >= 1) {
+      return res.status(400).json({
+        msg: 'Errores en los parametros',
+        error: true,
+        details: errors
+      });
     }
-})
+
+    let today = new Date();
+    let date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
+    let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
+    let fecha = date + ' ' + time;
+
+    // ============================
+    // VALIDAMOS ARCHIVOS
+    // ============================
+    let existeFoto = req.files?.foto && req.files.foto.length > 0;
+    let existeIdentificacion = req.files?.identificacion && req.files.identificacion.length > 0;
+
+    let formdata = new FormData();
+    let noFotos = 0;
+
+    // ============================
+    // ARMAMOS QUERY BASE
+    // ============================
+    let query = `UPDATE usuario SET
+        nombres          = '${nombres}', 
+        apellidos        = '${apellidos}',
+        cargo            = '${cargo}',
+        area             = '${area}',
+        nss              = '${nss}',
+        telefono         = ${telefono ? `'${telefono}'` : 'NULL'},`;
+
+    // ============================
+    // FOTO
+    // ============================
+    if (existeFoto) {
+      noFotos++;
+
+      let tituloFoto = `${date}-${req.files.foto[0].originalname}`;
+      let foto1 = `${process.env.URLFRONT}/images/guias/${tituloFoto}`;
+
+      let file = fs.readFileSync(req.files.foto[0].path, { encoding: "base64" });
+
+      formdata.append('foto', file);
+      formdata.append('nombre_foto', tituloFoto);
+
+      query += `foto = '${foto1}',`;
+    }
+
+    // ============================
+    // IDENTIFICACION
+    // ============================
+    if (existeIdentificacion) {
+      noFotos++;
+
+      let tituloIdentificacion = `${date}-${req.files.identificacion[0].originalname}`;
+      let identificacion1 = `${process.env.URLFRONT}/images/guias/${tituloIdentificacion}`;
+
+      let file2 = fs.readFileSync(req.files.identificacion[0].path, { encoding: "base64" });
+
+      formdata.append('identificacion', file2);
+      formdata.append('nombre_identificacion', tituloIdentificacion);
+
+      query += `identificacion = '${identificacion1}',`;
+    }
+
+    // ============================
+    // SI HAY ARCHIVOS, SUBIMOS
+    // ============================
+    if (existeFoto || existeIdentificacion) {
+
+      let response = await fetch(`${process.env.URLFRONT}/images/guias/api_guias_base64.php`, {
+        method: 'POST',
+        body: formdata
+      });
+
+      let result = await response.json();
+
+      let noErrors = 0;
+
+      result.forEach(element => {
+        if (element.error) {
+          noErrors++;
+        }
+      });
+
+      // Si hay errores al subir
+      if (noErrors >= 4 || (noFotos >= 2 && noErrors >= 2) || noErrors == 1) {
+        return res.status(400).json({
+          error: true,
+          msg: "No se agregaron las fotos, intentarlo nuevamente"
+        });
+      }
+    }
+
+    // ============================
+    // TERMINAMOS QUERY
+    // ============================
+    query += `
+        empresa_id      = '${empresa_id}', 
+        updated_at      = '${fecha}'
+        WHERE id        = ${id}`;
+
+    let resultDB = await db.pool.query(query);
+    resultDB = resultDB[0];
+
+    res.status(200).json({
+      error: false,
+      msg: `Registro actualizado con exito, fotos actualizadas: ${noFotos}`
+    });
+
+  } catch (error) {
+    res.status(400).json({
+      error: true,
+      message: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 
 app.put('/setBasicData', async (req, res) => {
     try {
