@@ -119,6 +119,35 @@ function weekDay(fecha) {
     return diasSemana[dayselected.getDay()];
 }
 
+// Función para determinar si una fecha es el último miércoles del mes
+function esUltimoMiercolesDelMes(fecha) {
+    let fechaObj;
+
+    if (typeof fecha === 'string') {
+        const [year, month, day] = fecha.split('-').map(Number);
+        fechaObj = new Date(year, month - 1, day);
+    } else {
+        fechaObj = fecha;
+    }
+
+    // Verificar si es miércoles
+    if (fechaObj.getDay() !== 3) { // 3 = miércoles en JavaScript (0 = domingo)
+        return false;
+    }
+
+    // Obtener el último día del mes
+    const ultimoDiaMes = new Date(fechaObj.getFullYear(), fechaObj.getMonth() + 1, 0);
+
+    // Encontrar el último miércoles del mes
+    let ultimoMiercoles = new Date(ultimoDiaMes);
+    while (ultimoMiercoles.getDay() !== 3) {
+        ultimoMiercoles.setDate(ultimoMiercoles.getDate() - 1);
+    }
+
+    // Comparar si la fecha dada es el último miércoles
+    return fechaObj.getDate() === ultimoMiercoles.getDate();
+}
+
 // Función para generar el código QR
 async function generateQRCode(text) {
     try {
@@ -980,12 +1009,42 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
 
         let boletos = parseInt(req.params.boletos);
 
+        // Recibir y parsear tipos_boletos de los query params
+        let tiposBoletos = {};
+        if (req.query.tipos_boletos) {
+            try {
+                tiposBoletos = JSON.parse(req.query.tipos_boletos);
+                if (typeof tiposBoletos !== 'object' || tiposBoletos === null || Array.isArray(tiposBoletos)) {
+                    tiposBoletos = {};
+                }
+            } catch (error) {
+                console.error('Error parseando tipos_boletos:', error);
+                tiposBoletos = {};
+            }
+
+            // Validar que si hay tipoD, no haya otros tipos de boletos
+            if (tiposBoletos.tipoD > 0) {
+                const otrosTipos = Object.keys(tiposBoletos).filter(tipo => tipo !== 'tipoD' && tiposBoletos[tipo] > 0);
+                if (otrosTipos.length > 0) {
+                    return res.status(400).json({
+                        error: true,
+                        msg: 'Si selecciona boletos tipoD, no puede seleccionar otros tipos de boletos'
+                    });
+                }
+            }
+        }
+        // Si no se recibe tipos_boletos, continuar con la ejecución normal
+
         // Debug logs para depuración
-        // console.log('[HORARIOS] fecha:', fecha, 'tourId:', tourId, 'boletos:', boletos);
+        // console.log('[HORARIOS] fecha:', fecha, 'tourId:', tourId, 'boletos:', boletos, 'tipos_boletos:', tiposBoletos);
 
         //vemos que dia selecciono 
         let diaSeleccionado = weekDay(fecha);
         //console.log('[HORARIOS] diaSeleccionado:', diaSeleccionado);
+
+        // Verificar si es el último miércoles del mes para aplicar regla especial
+        let esUltimoMiercoles = esUltimoMiercolesDelMes(fecha);
+        //console.log('[HORARIOS] esUltimoMiercoles:', esUltimoMiercoles);
 
         // Obtener mes (0 = enero, 11 = diciembre)
         let mes = new Date(fecha).getMonth();
@@ -999,6 +1058,30 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
         let horariosResult = await db.pool.query(query);
         let horarios = horariosResult[0];
         //console.log('[HORARIOS] horarios encontrados:', horarios);
+
+        // Si es el último miércoles del mes Y el tipo de boleto es tipoD, filtrar para mostrar solo horario de 18:00
+        if (esUltimoMiercoles && tiposBoletos.tipoD > 0) {
+            const horariosFiltrados = horarios.filter(h => {
+                const hora = String(h.hora_salida).substring(0, 5); // "HH:MM"
+                return hora === '18:00';
+            });
+
+            // Si no existe el horario de 18:00, agregarlo manualmente
+            if (horariosFiltrados.length === 0) {
+                horarios = [{
+                    id: null,
+                    tour_id: parseInt(tourId),
+                    dia: diaSeleccionado,
+                    hora_salida: '18:00:00',
+                    status: status,
+                    applyForOperator: 0,
+                    idioma: 'Noche Museos'
+
+                }];
+            } else {
+                horarios = horariosFiltrados;
+            }
+        }
 
 
 
@@ -1060,15 +1143,21 @@ app.get('/horarios/:tourid/fecha/:fecha/boletos/:boletos', async (req, res) => {
                 disponible = viaje.lugares_disp >= boletos;
             } else {
                 // No hay viajeTour, consultar el tour para max_pasajeros
-                let queryTour = `SELECT max_pasajeros FROM tour WHERE id = ${tourId}`;
-                let tourResult = await db.pool.query(queryTour);
-                let max_pasajeros = tourResult[0][0]?.max_pasajeros;
-                if (typeof max_pasajeros === 'number') {
-                    lugares_disp = max_pasajeros;
-                    disponible = max_pasajeros >= boletos;
+                // Si es el último miércoles del mes, usar cupo máximo de 51
+                if (esUltimoMiercoles) {
+                    lugares_disp = 51;
+                    disponible = 51 >= boletos;
                 } else {
-                    lugares_disp = 'sin_info_tour';
-                    disponible = false;
+                    let queryTour = `SELECT max_pasajeros FROM tour WHERE id = ${tourId}`;
+                    let tourResult = await db.pool.query(queryTour);
+                    let max_pasajeros = tourResult[0][0]?.max_pasajeros;
+                    if (typeof max_pasajeros === 'number') {
+                        lugares_disp = max_pasajeros;
+                        disponible = max_pasajeros >= boletos;
+                    } else {
+                        lugares_disp = 'sin_info_tour';
+                        disponible = false;
+                    }
                 }
             }
             return {
@@ -1407,15 +1496,33 @@ app.post('/crear-admin', async (req, res) => {
             let newClient = await db.pool.query(query);
             cliente_id = newClient[0].insertId;
         }
-
+        let tiposBoletos = {};
+        try {
+            tiposBoletos = JSON.parse(tipos_boletos);
+            if (typeof tiposBoletos !== 'object' || tiposBoletos === null || Array.isArray(tiposBoletos)) {
+                console.error('tipos_boletos no es un objeto válido:', tiposBoletos);
+                tiposBoletos = {};
+            }
+        } catch (error) {
+            console.error('Error parseando tipos_boletos:', error);
+            tiposBoletos = {};
+        }
 
         //info tour para calcular fecha de regreso
-        query = `SELECT * FROM tour WHERE id = ${tourId} `;
-        let tour = await db.pool.query(query);
-        tour = tour[0][0];
-        let duracion = tour.duracion;
-        let max_pasajeros = tour.max_pasajeros;
+        // Si hay tipoD, usar valores especiales
+        let duracion, max_pasajeros;
+        if (tiposBoletos.tipoD > 0) {
+            duracion = 13;
+            max_pasajeros = 51;
+        } else {
+            query = `SELECT * FROM tour WHERE id = ${tourId} `;
+            let tour = await db.pool.query(query);
+            tour = tour[0][0];
+            duracion = tour.duracion;
+            max_pasajeros = tour.max_pasajeros;
+        }
         //console.log(`Duracion: ${duracion}`);
+
 
         if (!viajeTourId) {
 
@@ -1548,7 +1655,7 @@ app.post('/crear-admin', async (req, res) => {
 
         ////////////////////////////////// preparacion de correo//////////////////////////////////
         // Crear la tabla de boletos
-        let tiposBoletos = {};
+        tiposBoletos = {};
 
         try {
             tiposBoletos = JSON.parse(tipos_boletos);
@@ -1566,14 +1673,16 @@ app.post('/crear-admin', async (req, res) => {
         const precios = {
             tipoA: 270,
             tipoB: 130,
-            tipoC: 65
+            tipoC: 65,
+            tipoD: 250
         };
 
         // 
         const nombres = {
             tipoA: "Entrada General",
             tipoB: "Ciudadano Mexicano",
-            tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
+            tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes",
+            tipoD: "Noche de Museos"
         };
 
         // 
@@ -1784,13 +1893,31 @@ app.post('/crear-admin-cortesia', async (req, res) => {
             cliente_id = newClient[0].insertId;
         }
 
+        let tiposBoletos = {};
+        try {
+            tiposBoletos = JSON.parse(tipos_boletos);
+            if (typeof tiposBoletos !== 'object' || tiposBoletos === null || Array.isArray(tiposBoletos)) {
+                console.error('tipos_boletos no es un objeto válido:', tiposBoletos);
+                tiposBoletos = {};
+            }
+        } catch (error) {
+            console.error('Error parseando tipos_boletos:', error);
+            tiposBoletos = {};
+        }
 
         //info tour para calcular fecha de regreso
-        query = `SELECT * FROM tour WHERE id = ${tourId} `;
-        let tour = await db.pool.query(query);
-        tour = tour[0][0];
-        let duracion = tour.duracion;
-        let max_pasajeros = tour.max_pasajeros;
+        // Si hay tipoD, usar valores especiales
+        let duracion, max_pasajeros;
+        if (tiposBoletos.tipoD > 0) {
+            duracion = 13;
+            max_pasajeros = 51;
+        } else {
+            query = `SELECT * FROM tour WHERE id = ${tourId} `;
+            let tour = await db.pool.query(query);
+            tour = tour[0][0];
+            duracion = tour.duracion;
+            max_pasajeros = tour.max_pasajeros;
+        }
         //console.log(`Duracion: ${duracion}`);
 
         if (!viajeTourId) {
@@ -1924,7 +2051,7 @@ app.post('/crear-admin-cortesia', async (req, res) => {
 
         ////////////////////////////////// preparacion de correo//////////////////////////////////
         // Crear la tabla de boletos
-        let tiposBoletos = {};
+        tiposBoletos = {};
 
         try {
             tiposBoletos = JSON.parse(tipos_boletos);
@@ -1942,14 +2069,16 @@ app.post('/crear-admin-cortesia', async (req, res) => {
         const precios = {
             tipoA: 270,
             tipoB: 130,
-            tipoC: 65
+            tipoC: 65,
+            tipoD:250
         };
 
         // 
         const nombres = {
             tipoA: "Entrada General",
             tipoB: "Ciudadano Mexicano",
-            tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
+            tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes",
+            tipoD: "Noche de Museos"
         };
 
         // 
@@ -3599,7 +3728,7 @@ app.put('/checkin-old', async (req, res) => {
 
 app.put('/checkin', async (req, res) => {
     try {
-        const { idReservacion } = req.body;
+        const { idReservacion, tipo = "entrada" } = req.body;
         if (!idReservacion) {
             return res.status(400).json({ error: true, msg: "idReservacion es obligatorio." });
         }
