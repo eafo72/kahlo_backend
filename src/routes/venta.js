@@ -244,13 +244,9 @@ function separarFechaHora(fecha_comprada) {
     return { fecha, hora };
 }
 
-const verificarDisponibilidad = async (no_boletos, tourId, fecha, hora) => {
+const verificarDisponibilidad = async (no_boletos, tourId, fecha, hora, tipos_boletos = null) => {
 
     hora = hora.split(':');
-
-    if (no_boletos > 12) {
-        return false;
-    }
 
     let query = `SELECT 
                         * 
@@ -265,6 +261,47 @@ const verificarDisponibilidad = async (no_boletos, tourId, fecha, hora) => {
         disponibilidad = disponibilidad[0][0];
         if (disponibilidad.lugares_disp < Number(no_boletos)) {
             return false;
+        }
+    } else {
+        // No hay viajeTour, verificar si hay tipoD para aplicar cupo máximo especial
+        if (tipos_boletos) {
+            let parsedTiposBoletos = {};
+            try {
+                if (typeof tipos_boletos === 'string') {
+                    parsedTiposBoletos = JSON.parse(tipos_boletos);
+                } else {
+                    parsedTiposBoletos = tipos_boletos;
+                }
+                
+                if (parsedTiposBoletos.tipoD > 0) {
+                    // Para tipoD, el cupo máximo es 51
+                    if (no_boletos > 51) {
+                        return false;
+                    }
+                } else {
+                    // Para otros tipos, aplicar límite de 12 y consultar el tour para max_pasajeros
+                    if (no_boletos > 12) {
+                        return false;
+                    }
+                    let queryTour = `SELECT max_pasajeros FROM tour WHERE id = ${tourId}`;
+                    let tourResult = await db.pool.query(queryTour);
+                    let max_pasajeros = tourResult[0][0]?.max_pasajeros;
+                    if (typeof max_pasajeros === 'number' && no_boletos > max_pasajeros) {
+                        return false;
+                    }
+                }
+            } catch (error) {
+                console.error('Error parseando tipos_boletos en verificarDisponibilidad:', error);
+                // Si hay error, aplicar validación normal de 12 boletos
+                if (no_boletos > 12) {
+                    return false;
+                }
+            }
+        } else {
+            // Si no hay tipos_boletos, aplicar validación normal de 12 boletos
+            if (no_boletos > 12) {
+                return false;
+            }
         }
     }
 
@@ -351,7 +388,8 @@ const handleSuccessfulPayment = async (session) => {
                 ticketTypes: {
                     tipoA: "Entrada General",
                     tipoB: "Ciudadano Mexicano",
-                    tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
+                    tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes",
+                    tipoD: "Noche de Museos"
                 }
             },
             en: {
@@ -363,7 +401,8 @@ const handleSuccessfulPayment = async (session) => {
                 ticketTypes: {
                     tipoA: "General Admission",
                     tipoB: "Mexican Citizen",
-                    tipoC: "Student / Senior / Child (-12) / With Disabilities"
+                    tipoC: "Student / Senior / Child (-12) / With Disabilities",
+                    tipoD: "Museum Night"
                 }
             },
             fr: {
@@ -375,7 +414,8 @@ const handleSuccessfulPayment = async (session) => {
                 ticketTypes: {
                     tipoA: "Entrée générale",
                     tipoB: "Citoyen mexicain",
-                    tipoC: "Étudiant / Senior / Enfant (-12) / Personnes handicapées"
+                    tipoC: "Étudiant / Senior / Enfant (-12) / Personnes handicapées",
+                    tipoD: "Nuit des Musées"
                 }
             }
         };
@@ -398,7 +438,7 @@ const handleSuccessfulPayment = async (session) => {
             tiposBoletos = { "tipoA": no_boletos }; // Usar tipoA como valor por defecto
         }
 
-        const precios = { tipoA: 270, tipoB: 130, tipoC: 65 };
+        const precios = { tipoA: 270, tipoB: 130, tipoC: 65, tipoD: 250 };
 
         let tiposBoletosArray = Object.entries(tiposBoletos).map(([tipo, cantidad]) => ({
             nombre: t.ticketTypes[tipo] || tipo,
@@ -513,7 +553,8 @@ const handleSuccessfulPayment_NEW = async (session) => {
                 ticketTypes: {
                     tipoA: "Entrada General",
                     tipoB: "Ciudadano Mexicano",
-                    tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
+                    tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes",
+                    tipoD: "Noche de Museos"
                 }
             },
             en: {
@@ -525,7 +566,8 @@ const handleSuccessfulPayment_NEW = async (session) => {
                 ticketTypes: {
                     tipoA: "General Admission",
                     tipoB: "Mexican Citizen",
-                    tipoC: "Student / Senior / Child (-12) / With Disabilities"
+                    tipoC: "Student / Senior / Child (-12) / With Disabilities",
+                    tipoD: "Museum Night"
                 }
             },
             fr: {
@@ -537,7 +579,8 @@ const handleSuccessfulPayment_NEW = async (session) => {
                 ticketTypes: {
                     tipoA: "Entrée générale",
                     tipoB: "Citoyen mexicain",
-                    tipoC: "Étudiant / Senior / Enfant (-12) / Personnes handicapées"
+                    tipoC: "Étudiant / Senior / Enfant (-12) / Personnes handicapées",
+                    tipoD: "Nuit des Musées"
                 }
             }
         };
@@ -618,7 +661,7 @@ const handleSuccessfulPayment_NEW = async (session) => {
             }
         }
 
-        const precios = { tipoA: 270, tipoB: 130, tipoC: 65 };
+        const precios = { tipoA: 270, tipoB: 130, tipoC: 65, tipoD: 250 };
 
         let tiposBoletosArray = Object.entries(tiposBoletos).map(([tipo, cantidad]) => ({
             nombre: t.ticketTypes[tipo] || tipo,
@@ -2070,7 +2113,7 @@ app.post('/crear-admin-cortesia', async (req, res) => {
             tipoA: 270,
             tipoB: 130,
             tipoC: 65,
-            tipoD:250
+            tipoD: 250
         };
 
         // 
@@ -2581,6 +2624,19 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
         let fecha_ida_original = metadata.fecha_ida;
         let horaCompleta = normalizarHora(metadata.horaCompleta);
 
+        // Parsear tipos_boletos para verificar si hay tipoD
+        let parsedTiposBoletos = {};
+        try {
+            parsedTiposBoletos = JSON.parse(tipos_boletos);
+            if (typeof parsedTiposBoletos !== 'object' || parsedTiposBoletos === null || Array.isArray(parsedTiposBoletos)) {
+                console.error('tipos_boletos no es un objeto válido:', parsedTiposBoletos);
+                parsedTiposBoletos = {};
+            }
+        } catch (error) {
+            console.error('Error parseando tipos_boletos:', error);
+            parsedTiposBoletos = {};
+        }
+
         //verificamos que no sea martes
         await validarDiaPermitido(fecha_ida_original, tourId);
 
@@ -2595,7 +2651,7 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
 
 
         // 1.- Verificar disponibilidad
-        const disponible = verificarDisponibilidad(no_boletos, tourId, fecha_ida_original, horaCompleta);
+        const disponible = verificarDisponibilidad(no_boletos, tourId, fecha_ida_original, horaCompleta, parsedTiposBoletos);
         if (disponible == false) {
             return res.status(200).json({ error: true, msg: "Cupo no disponible" });
         }
@@ -2621,12 +2677,21 @@ app.post('/stripe/create-checkout-session', async (req, res) => {
         let query = ``;
         let viajeTourId = null;
 
+
         //info tour para calcular fecha de regreso
-        query = `SELECT * FROM tour WHERE id = ${tourId} `;
-        let tour = await db.pool.query(query);
-        tour = tour[0][0];
-        let duracion = tour.duracion;
-        let max_pasajeros = tour.max_pasajeros;
+        // Si hay tipoD, usar valores especiales
+        let duracion, max_pasajeros;
+        if (parsedTiposBoletos.tipoD > 0) {
+            duracion = 13;
+            max_pasajeros = 51;
+        } else {
+            query = `SELECT * FROM tour WHERE id = ${tourId} `;
+            let tour = await db.pool.query(query);
+            tour = tour[0][0];
+            duracion = tour.duracion;
+            max_pasajeros = tour.max_pasajeros;
+        }
+
 
         const fecha_ida_formateada = `${fecha_ida_original} ${horaCompleta}`;
 
