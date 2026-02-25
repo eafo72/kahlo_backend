@@ -88,6 +88,39 @@ function getEmailTemplate(lang = 'es') {
 // Template por defecto (español)
 const emailTemplate = getEmailTemplate();
 
+const emailTemplateTourOperador = require('../templates/emailTemplate-tour-operador');
+
+async function enviarCorreoTourOperador(emailData, correo) {
+    try {
+        // Generar HTML del correo
+        const emailHtml = emailTemplateTourOperador(emailData);
+
+        // Enviar correo al cliente
+        let message = {
+            from: process.env.MAIL,
+            to: correo,
+            subject: "¡Confirmación de Compras Múltiples - Museo Casa Kahlo!",
+            text: "",
+            html: emailHtml
+        };
+
+        const info = await mailer.sendMail(message);
+        console.log('Email enviado al cliente:', info);
+
+        // Enviar copia al admin
+        message.to = process.env.MAIL;
+        message.subject = "COPIA - Confirmación de Compras Múltiples - Tour Operador";
+
+        const infoAdmin = await mailer.sendMail(message);
+        console.log('Email enviado al admin:', infoAdmin);
+
+        return { success: true, info, infoAdmin };
+    } catch (error) {
+        console.error("Falló envío de correo:", error.message);
+        return { success: false, error: error.message };
+    }
+}
+
 function generarPassword(longitud = 10) {
     const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_-+=<>?';
     let password = '';
@@ -272,7 +305,7 @@ const verificarDisponibilidad = async (no_boletos, tourId, fecha, hora, tipos_bo
                 } else {
                     parsedTiposBoletos = tipos_boletos;
                 }
-                
+
                 if (parsedTiposBoletos.tipoD > 0) {
                     // Para tipoD, el cupo máximo es 51
                     if (no_boletos > 51) {
@@ -875,7 +908,268 @@ const handleFailedPayment = async (session) => {
     }
 };
 
+const handleWalletTopup = async (session) => {
 
+    const customerId = session.metadata.customer_id;
+    const amount = parseFloat(session.metadata.amount_mxn);
+    const sessionId = session.id;
+
+    // 🔒 IDEMPOTENCIA
+    const [existing] = await pool.query(
+        'SELECT id FROM movimientos WHERE stripe_session_id = ?',
+        [sessionId]
+    );
+
+    if (existing.length > 0) {
+        console.log('⚠️ Recarga ya procesada:', sessionId);
+        return;
+    }
+
+    await pool.query('START TRANSACTION');
+
+    try {
+
+        const [userRows] = await pool.query(
+            'SELECT saldo FROM usuario WHERE id = ? FOR UPDATE',
+            [customerId]
+        );
+
+        if (userRows.length === 0) {
+            throw new Error('Usuario no encontrado');
+        }
+
+        const saldoAnterior = parseFloat(userRows[0].saldo);
+        const saldoNuevo = saldoAnterior + amount;
+
+        await pool.query(
+            'UPDATE usuario SET saldo = ? WHERE id = ?',
+            [saldoNuevo, customerId]
+        );
+
+        await pool.query(`
+      INSERT INTO movimientos (
+        usuario_id,
+        tipo_movimiento,
+        monto,
+        saldo_anterior,
+        saldo_nuevo,
+        descripcion,
+        referencia,
+        stripe_session_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+            customerId,
+            'recarga',
+            amount,
+            saldoAnterior,
+            saldoNuevo,
+            'Recarga de saldo via Stripe',
+            `STRIPE-${sessionId.slice(-8)}`,
+            sessionId
+        ]);
+
+        await pool.query('COMMIT');
+
+        console.log('✅ Recarga aplicada correctamente:', sessionId);
+
+        // Obtener información completa del cliente para el correo
+        const [clientInfo] = await pool.query(
+            'SELECT nombres, apellidos, correo FROM usuario WHERE id = ?',
+            [customerId]
+        );
+
+        if (clientInfo.length > 0) {
+            const client = clientInfo[0];
+            const nombreCompleto = `${client.nombres} ${client.apellidos}`;
+
+            // Generar HTML del correo de recarga
+            const emailHtml = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8" />
+                    <title>Confirmación de Recarga - Museo Casa Kahlo</title>
+                </head>
+                <body style="margin:0; padding:0; background-color:#FFFFFF; font-family: Arial, sans-serif;">
+                    <table width="600" cellpadding="0" cellspacing="0" border="0" style="margin:auto; background-color: #FFFFFF;">
+                        <tr>
+                            <td align="center" style="padding: 20px 0;">
+                                <h1 style="color: #a01e24; margin: 0;">¡Recarga Exitosa!</h1>
+                                <h2 style="color: #1D1A14; margin: 10px 0;">Museo Casa Kahlo</h2>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 20px 40px;">
+                                <p style="font-size: 16px; color: #1D1A14; line-height: 1.5;">
+                                    Estimado/a <strong>${nombreCompleto}</strong>,
+                                </p>
+                                <p style="font-size: 16px; color: #1D1A14; line-height: 1.5;">
+                                    Tu recarga se ha procesado exitosamente. A continuación los detalles:
+                                </p>
+                                
+                                <table width="100%" cellpadding="10" cellspacing="0" border="1" style="border-collapse: collapse; margin: 20px 0;">
+                                    <tr style="background-color: #f5f5f5;">
+                                        <th style="text-align: left; padding: 10px;">Concepto</th>
+                                        <th style="text-align: right; padding: 10px;">Monto</th>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 10px;">Saldo Anterior</td>
+                                        <td style="padding: 10px; text-align: right;">$${saldoAnterior.toFixed(2)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 10px;">Recarga</td>
+                                        <td style="padding: 10px; text-align: right; color: #28a745;">+$${amount.toFixed(2)}</td>
+                                    </tr>
+                                    <tr style="background-color: #f9f9f9; font-weight: bold;">
+                                        <td style="padding: 10px;">Saldo Nuevo</td>
+                                        <td style="padding: 10px; text-align: right;">$${saldoNuevo.toFixed(2)}</td>
+                                    </tr>
+                                </table>
+                                
+                                <p style="font-size: 14px; color: #666; margin-top: 20px;">
+                                    <strong>ID de Transacción:</strong> ${sessionId}
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 20px 40px; text-align: center; border-top: 1px solid #eee;">
+                                <p style="font-size: 12px; color: #666; margin: 0;">
+                                    Este es un correo automático. Por favor no responder.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </body>
+                </html>
+            `;
+
+            // Enviar correo al cliente
+            let message = {
+                from: process.env.MAIL,
+                to: client.correo,
+                subject: "¡Recarga Exitosa - Museo Casa Kahlo!",
+                text: "",
+                html: emailHtml
+            };
+
+            const info = await mailer.sendMail(message);
+            console.log('📧 Email de recarga enviado a:', client.correo, 'ID:', info.messageId);
+        }
+
+    } catch (error) {
+        await pool.query('ROLLBACK');
+        console.error('❌ Error en recarga:', error);
+        throw error;
+    }
+   
+}
+
+const handleWalletTopupFailed = async (session) => {
+    const customerId = session.metadata.customer_id;
+    const amount = parseFloat(session.metadata.amount_mxn);
+    const sessionId = session.id;
+
+    try {
+        // Obtener información del cliente
+        const [clientInfo] = await pool.query(
+            'SELECT nombres, apellidos, correo FROM usuario WHERE id = ?',
+            [customerId]
+        );
+
+        if (clientInfo.length > 0) {
+            const client = clientInfo[0];
+            const nombreCompleto = `${client.nombres} ${client.apellidos}`;
+
+            // Generar HTML del correo de fallo
+            const emailHtml = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8" />
+                    <title>Recarga Fallida - Museo Casa Kahlo</title>
+                </head>
+                <body style="margin:0; padding:0; background-color:#FFFFFF; font-family: Arial, sans-serif;">
+                    <table width="600" cellpadding="0" cellspacing="0" border="0" style="margin:auto; background-color: #FFFFFF;">
+                        <tr>
+                            <td align="center" style="padding: 20px 0;">
+                                <h1 style="color: #dc3545; margin: 0;">Recarga Fallida</h1>
+                                <h2 style="color: #1D1A14; margin: 10px 0;">Museo Casa Kahlo</h2>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 20px 40px;">
+                                <p style="font-size: 16px; color: #1D1A14; line-height: 1.5;">
+                                    Estimado/a <strong>${nombreCompleto}</strong>,
+                                </p>
+                                <p style="font-size: 16px; color: #1D1A14; line-height: 1.5;">
+                                    Lamentamos informarte que tu recarga no pudo ser procesada. A continuación los detalles:
+                                </p>
+                                
+                                <table width="100%" cellpadding="10" cellspacing="0" border="1" style="border-collapse: collapse; margin: 20px 0;">
+                                    <tr style="background-color: #f5f5f5;">
+                                        <th style="text-align: left; padding: 10px;">Concepto</th>
+                                        <th style="text-align: right; padding: 10px;">Monto</th>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 10px;">Monto Intentado</td>
+                                        <td style="padding: 10px; text-align: right;">$${amount.toFixed(2)}</td>
+                                    </tr>
+                                    <tr style="background-color: #f9f9f9;">
+                                        <td style="padding: 10px;">Estado</td>
+                                        <td style="padding: 10px; text-align: right; color: #dc3545; font-weight: bold;">Fallido</td>
+                                    </tr>
+                                </table>
+                                
+                                <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; padding: 15px; margin: 20px 0;">
+                                    <p style="margin: 0; color: #856404; font-size: 14px;">
+                                        <strong>Posibles causas:</strong><br>
+                                        • Fondos insuficientes en tu tarjeta<br>
+                                        • Tarjeta rechazada por el banco<br>
+                                        • Problemas de conexión con Stripe<br>
+                                        • Información de pago incorrecta
+                                    </p>
+                                </div>
+                                
+                                <p style="font-size: 14px; color: #666; margin-top: 20px;">
+                                    <strong>ID de Transacción:</strong> ${sessionId}
+                                </p>
+                                
+                                <p style="font-size: 16px; color: #1D1A14; line-height: 1.5; margin-top: 20px;">
+                                    Por favor, intenta nuevamente o contacta a tu banco si el problema persiste.
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 20px 40px; text-align: center; border-top: 1px solid #eee;">
+                                <p style="font-size: 12px; color: #666; margin: 0;">
+                                    Este es un correo automático. Por favor no responder.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </body>
+                </html>
+            `;
+
+            // Enviar correo al cliente
+            let message = {
+                from: process.env.MAIL,
+                to: client.correo,
+                subject: "Recarga Fallida - Museo Casa Kahlo",
+                text: "",
+                html: emailHtml
+            };
+
+            const info = await mailer.sendMail(message);
+            console.log('📧 Email de fallo de recarga enviado a:', client.correo, 'ID:', info.messageId);
+        }
+
+        console.log('❌ Recarga fallida notificada:', sessionId);
+
+    } catch (error) {
+        console.error('❌ Error notificando fallo de recarga:', error);
+    }
+}
 
 //////////////////////////////////////////
 //                Venta                 //
@@ -1842,6 +2136,318 @@ app.post('/crear-admin', async (req, res) => {
     }
 });
 
+app.post('/crear-touroperador', async (req, res) => {
+    try {
+        let { cart_items, nombre_cliente, cliente_id, correo, tourId, total, payment_method } = req.body;
+
+        // Validar que el método de pago sea balance
+        if (payment_method !== 'balance') {
+            return res.status(400).json({ error: true, msg: "Método de pago no válido. Se requiere 'balance'" });
+        }
+
+        // Parsear cart_items
+        let cartItems = [];
+        try {
+            cartItems = JSON.parse(cart_items);
+            if (!Array.isArray(cartItems)) {
+                return res.status(400).json({ error: true, msg: "cart_items debe ser un array" });
+            }
+        } catch (error) {
+            return res.status(400).json({ error: true, msg: "Error parseando cart_items" });
+        }
+
+        // Validar que el usuario exista y obtener su saldo
+        let query = `SELECT * FROM usuario WHERE id = ${cliente_id}`;
+        let clientResult = await db.pool.query(query);
+        let client = clientResult[0];
+        
+        if (client.length === 0) {
+            return res.status(400).json({ error: true, msg: "Cliente no encontrado" });
+        }
+        client = client[0];
+
+        // Verificar saldo suficiente
+        if (parseFloat(client.saldo) < parseFloat(total)) {
+            return res.status(400).json({ 
+                error: true, 
+                msg: "Saldo insuficiente", 
+                details: `Saldo actual: $${client.saldo}, Total requerido: $${total}` 
+            });
+        }
+
+        // Validar correo
+        if (!correo) {
+            return res.status(400).json({ error: true, msg: "El correo es obligatorio" });
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(correo)) {
+            return res.status(400).json({ error: true, msg: "El formato del correo no es válido" });
+        }
+
+        let today = new Date().toLocaleString('es-MX', {
+            timeZone: 'America/Mexico_City',
+            hour12: false // formato 24 horas sin AM/PM
+        });
+        // Ejemplo: "29/09/2025, 23:42:08"
+        let [datePart, timePart] = today.split(', ');
+        let [day, month, year] = datePart.split('/');
+        let [hours, minutes, seconds] = timePart.split(':');
+        month = month.padStart(2, '0');
+        day = day.padStart(2, '0');
+        hours = hours.padStart(2, '0');
+        minutes = minutes.padStart(2, '0');
+        seconds = seconds.padStart(2, '0');
+        let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+        // Primero validar disponibilidad de todos los items antes de procesar
+        for (let item of cartItems) {
+            let { fecha_ida, horaCompleta, boletos, tipos_boletos } = item;
+
+            await validarDiaPermitido(fecha_ida, tourId);
+            
+            const estaBloqueado = await verificarHorarioBloqueado(fecha_ida, horaCompleta, tourId);
+            if (estaBloqueado) {
+                return res.status(403).json({
+                    error: true,
+                    msg: `El horario ${fecha_ida} ${horaCompleta} está bloqueado y no está disponible`
+                });
+            }
+
+            let parsedTiposBoletos = {};
+            try {
+                parsedTiposBoletos = JSON.parse(tipos_boletos);
+                if (typeof parsedTiposBoletos !== 'object' || parsedTiposBoletos === null || Array.isArray(parsedTiposBoletos)) {
+                    parsedTiposBoletos = {};
+                }
+            } catch (error) {
+                console.error('Error parseando tipos_boletos:', error);
+                parsedTiposBoletos = {};
+            }
+
+            const disponible = await verificarDisponibilidad(boletos, tourId, fecha_ida, horaCompleta, parsedTiposBoletos);
+            if (!disponible) {
+                return res.status(400).json({ 
+                    error: true, 
+                    msg: "Cupo no disponible", 
+                    details: `Fecha: ${fecha_ida}, Hora: ${horaCompleta}, Boletos: ${boletos}`,
+                    item_sin_disponibilidad: {
+                        fecha: fecha_ida,
+                        hora: horaCompleta,
+                        boletos_solicitados: boletos
+                    }
+                });
+            }
+        }
+
+        // Si todas las validaciones pasan, iniciar transacción
+        const connection = await db.pool.getConnection();
+        await connection.beginTransaction();
+
+        try {
+            // Procesar cada item del carrito dentro de la transacción
+            let reservaciones = [];
+            let totalBoletosProcesados = 0;
+
+            for (let item of cartItems) {
+                let { fecha_ida, horaCompleta, boletos, tipos_boletos, subtotal } = item;
+
+                // Obtener información del tour para duración y max_pasajeros
+                let duracion, max_pasajeros;
+                let parsedTiposBoletos = {};
+                try {
+                    parsedTiposBoletos = JSON.parse(tipos_boletos);
+                } catch (error) {
+                    parsedTiposBoletos = {};
+                }
+
+                if (parsedTiposBoletos.tipoD > 0) {
+                    duracion = 13;
+                    max_pasajeros = 51;
+                } else {
+                    query = `SELECT * FROM tour WHERE id = ${tourId}`;
+                    let tour = await connection.query(query);
+                    tour = tour[0][0];
+                    duracion = tour.duracion;
+                    max_pasajeros = tour.max_pasajeros;
+                }
+
+                // Procesar viajeTour
+                let fecha_ida_formateada = `${fecha_ida} ${horaCompleta}`;
+                let viajeTourId = null;
+                let seCreoRegistro = false;
+
+                let hora = horaCompleta.split(':');
+                query = `SELECT * FROM viajeTour 
+                         WHERE CAST(fecha_ida AS DATE) = '${fecha_ida}'
+                         AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
+                         AND tour_id = ${tourId}`;
+                let disponibilidad = await connection.query(query);
+                disponibilidad = disponibilidad[0];
+
+                // Calcular fecha de regreso
+                const newfecha = addMinutesToDate(new Date(fecha_ida_formateada), parseInt(duracion));
+                const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
+
+                if (disponibilidad.length === 0) {
+                    // Crear nuevo viajeTour
+                    query = `SELECT * FROM tour WHERE id = ${tourId}`;
+                    let result = await connection.query(query);
+                    result = result[0][0];
+
+                    let guia = result.guias;
+                    guia = JSON.parse(guia);
+
+                    query = `INSERT INTO viajeTour 
+                             (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
+                             VALUES 
+                             ('${fecha_ida_formateada}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
+                    
+                    result = await connection.query(query);
+                    result = result[0];
+                    viajeTourId = result.insertId;
+                    seCreoRegistro = true;
+                } else {
+                    viajeTourId = disponibilidad[0].id;
+                }
+
+                // Verificar disponibilidad actualizada (por si otro proceso la modificó)
+                let lugares_disp;
+                if (seCreoRegistro) {
+                    lugares_disp = max_pasajeros - parseInt(boletos);
+                } else {
+                    // Volver a consultar para obtener el valor más reciente
+                    query = `SELECT lugares_disp FROM viajeTour WHERE id = ${viajeTourId}`;
+                    let currentDisp = await connection.query(query);
+                    currentDisp = currentDisp[0][0];
+                    lugares_disp = currentDisp.lugares_disp - parseInt(boletos);
+                }
+
+                if (lugares_disp < 0) {
+                    await connection.rollback();
+                    return res.status(400).json({ 
+                        error: true, 
+                        msg: "El número de boletos excede los lugares disponibles", 
+                        details: `Fecha: ${fecha_ida}, Hora: ${horaCompleta}, Disponibilidad actual: ${lugares_disp + parseInt(boletos)}`,
+                        item_sin_disponibilidad: {
+                            fecha: fecha_ida,
+                            hora: horaCompleta,
+                            boletos_solicitados: boletos,
+                            disponibilidad_actual: lugares_disp + parseInt(boletos)
+                        }
+                    });
+                }
+
+                query = `UPDATE viajeTour SET lugares_disp = '${lugares_disp}' WHERE id = ${viajeTourId}`;
+                await connection.query(query);
+
+                // Generar session_id único similar a Stripe para esta reservación
+                const sessionId = 'nuba_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+                
+                // Insertar un registro en venta por cada boleto
+                for (let i = 0; i < parseInt(boletos); i++) {
+                    // Crear venta para un boleto
+                    query = `INSERT INTO venta 
+                             (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, session_id) 
+                             VALUES 
+                             ('V', '1', '${tipos_boletos}', '${subtotal / parseInt(boletos)}', '1', '${fecha}', '0.0', '0', '${fecha_ida_formateada}', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}', '${sessionId}')`;
+                    
+                    let ventaResult = await connection.query(query);
+                    ventaResult = ventaResult[0];
+
+                    let id_reservacion = ventaResult.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
+
+                    // Actualizar id_reservacion
+                    query = `UPDATE venta SET id_reservacion = '${id_reservacion}' WHERE id = ${ventaResult.insertId}`;
+                    await connection.query(query);
+
+                    // Actualizar saldo del cliente por este boleto
+                    const saldoAnterior = parseFloat(client.saldo);
+                    const saldoNuevo = saldoAnterior - parseFloat(subtotal / parseInt(boletos));
+                    
+                    query = `UPDATE usuario SET saldo = '${saldoNuevo}' WHERE id = ${cliente_id}`;
+                    await connection.query(query);
+                    
+                    // Actualizar saldo del cliente para la siguiente iteración
+                    client.saldo = saldoNuevo;
+
+                    // Registrar movimiento de compra en tabla movimientos
+                    const movimientoDescripcion = `Compra de reservación ${id_reservacion} - 1 boleto para ${fecha_ida} ${horaCompleta}`;
+                    
+                    query = `INSERT INTO movimientos 
+                             (usuario_id, monto, tipo_movimiento, descripcion, fecha_creacion, saldo_anterior, saldo_nuevo, referencia) 
+                             VALUES 
+                             ('${cliente_id}', '${subtotal / parseInt(boletos)}', 'compra', '${movimientoDescripcion}', '${fecha}', '${saldoAnterior}', '${saldoNuevo}', '${sessionId}')`;
+                    await connection.query(query);
+
+                    reservaciones.push({
+                        id_reservacion,
+                        fecha_ida,
+                        horaCompleta,
+                        boletos: 1,
+                        viajeTourId,
+                        subtotal: subtotal / parseInt(boletos)
+                    });
+                }
+
+                totalBoletosProcesados += parseInt(boletos);
+            }
+
+            // Confirmar transacción
+            await connection.commit();
+
+             // Preparar datos para el correo con descripción de las compras
+            const reservacionesConSubtotal = reservaciones.map((reservacion) => ({
+                ...reservacion,
+                subtotal: reservacion.subtotal || 0
+            }));
+
+            const emailData = {
+                nombre_cliente: nombre_cliente,
+                reservaciones: reservacionesConSubtotal,
+                total_boletos: totalBoletosProcesados,
+                total_descontado: total,
+                saldo_restante: parseFloat(client.saldo)
+            };
+
+            // Enviar correo de confirmación con descripción de las compras
+            const emailResult = await enviarCorreoTourOperador(emailData, correo);
+            if (!emailResult.success) {
+                console.error("Falló envío de correo:", emailResult.error);
+            }
+
+            
+            res.status(200).json({ 
+                msg: "Reservas creadas exitosamente", 
+                reservaciones: reservaciones,
+                total_boletos: totalBoletosProcesados,
+                total_descontado: total,
+                saldo_restante: parseFloat(client.saldo),
+                error: false 
+            });
+
+        } catch (error) {
+            await connection.rollback();
+            console.error('Error en transacción:', error);
+            res.status(400).json({ 
+                error: true, 
+                msg: "Error procesando las reservas", 
+                details: error.message 
+            });
+        } finally {
+            connection.release();
+        }
+
+    } catch (error) {
+        console.error('Error en crear-touroperador:', error);
+        res.status(400).json({ 
+            error: true, 
+            msg: error.message || 'Error procesando las reservas', 
+            details: error 
+        });
+    }
+});
+
 app.post('/crear-admin-cortesia', async (req, res) => {
     try {
         let { no_boletos, tipos_boletos, pagado, nombre_cliente, apellidos_cliente, correo, telefono, viajeTourId, tourId, fecha_ida, horaCompleta, total, metodo_pago } = req.body
@@ -2242,9 +2848,41 @@ app.post('/crear-admin-cortesia', async (req, res) => {
 })
 
 /////////////////////////////////////////////////////////// INICIO STRIPE ///////////////////////////////////////////////////////////
-app.post('/stripe/create-checkout-session-old', async (req, res) => {
+app.post('/stripe/create-balance-session', async (req, res) => {
     try {
-        const { lineItems, customerEmail, successUrl, cancelUrl, metadata } = req.body;
+        const { amount, customerEmail, successUrl, cancelUrl, metadata } = req.body;
+
+        // Validar que el monto sea válido
+        if (!amount || amount <= 0) {
+            return res.status(400).json({
+                error: true,
+                msg: 'El monto debe ser mayor a 0'
+            });
+        }
+
+        // Validar monto máximo
+        if (amount > 50000) {
+            return res.status(400).json({
+                error: true,
+                msg: 'El monto máximo permitido es $50,000.00 MXN'
+            });
+        }
+
+        // Convertir el monto a centavos (Stripe trabaja en centavos)
+        const amountInCents = Math.round(amount * 100);
+
+        // Crear line item para la carga de saldo
+        const lineItems = [{
+            price_data: {
+                currency: 'mxn',
+                product_data: {
+                    name: 'Recarga de Saldo',
+                    description: `Recarga de saldo por $${amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
+                },
+                unit_amount: amountInCents,
+            },
+            quantity: 1,
+        }];
 
         // Crea la sesión en la cuenta conectada
         const session = await stripe.checkout.sessions.create(
@@ -2255,365 +2893,42 @@ app.post('/stripe/create-checkout-session-old', async (req, res) => {
                 success_url: successUrl,
                 cancel_url: cancelUrl,
                 customer_email: customerEmail,
-                metadata: metadata,
+                metadata: {
+                    ...metadata,
+                    balance_load: 'true',
+                    amount_cents: amountInCents.toString(),
+                    amount_mxn: amount.toString()
+                },
                 billing_address_collection: 'auto',
+                payment_intent_data: {
+                    metadata: {
+                        ...metadata,
+                        balance_load: 'true',
+                        amount_cents: amountInCents.toString(),
+                        amount_mxn: amount.toString()
+                    }
+                }
             },
             {
-                stripeAccount: 'acct_1SAz5b3CVvaJXMYX', // 👈 clave: ID de la cuenta conectada osea la cuenta del museo
+                stripeAccount: 'acct_1SAz5b3CVvaJXMYX', // Cuenta conectada del museo
             }
         );
 
-        res.json({ sessionId: session.id, url: session.url, error: false });
+        res.json({
+            sessionId: session.id,
+            url: session.url,
+            error: false,
+            amount: amount,
+            amountInCents: amountInCents
+        });
 
     } catch (error) {
-        console.error('Error creating checkout session:', error);
-        res.status(400).json({ error: true, msg: error.message });
+        console.error('Error creating balance session:', error);
+        res.status(400).json({
+            error: true,
+            msg: error.message || 'Error al crear la sesión de carga de saldo'
+        });
     }
-});
-
-app.post('/stripe/webhook-old', express.raw({ type: 'application/json' }), async (req, res) => {
-    console.log(' WEBHOOK ENDPOINT ALCANZADO - TIMESTAMP:', new Date().toISOString());
-    console.log('');
-    console.log('Headers:', req.headers);
-    console.log('Body length:', req.body ? req.body.length : 'No body');
-    console.log('Method:', req.method);
-    console.log('URL:', req.originalUrl);
-
-    const sig = req.headers['stripe-signature'];
-    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-    console.log('Signature:', sig ? 'Presente' : 'Ausente');
-    console.log('Endpoint Secret:', endpointSecret ? 'Configurado' : 'No configurado');
-
-    let event;
-
-    try {
-        event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-        console.log('');
-        console.log('Tipo de evento:', event.type);
-    } catch (err) {
-        console.log('');
-        console.log('Webhook signature verification failed.', err.message);
-        return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-
-    // Handle the event
-    switch (event.type) {
-        case 'checkout.session.completed':
-            const session = event.data.object;
-            console.log('');
-            console.log('Payment succeeded (checkout.session.completed):', session.id);
-            console.log('');
-            console.log('Session completa:', JSON.stringify(session, null, 2));
-            console.log('');
-            console.log('Metadata:', session.metadata);
-
-            // Ejecutar la misma lógica que el endpoint /crear
-            if (session.metadata) {
-                console.log('');
-                console.log('Metadata encontrada, procesando...');
-                try {
-                    const { no_boletos, tipos_boletos, nombre_cliente, cliente_id, correo, tourId, total } = session.metadata;
-                    let fecha_ida_original = session.metadata.fecha_ida; // Variable separada para evitar conflictos
-                    let horaCompleta = normalizarHora(session.metadata.horaCompleta); // Variable separada para poder modificarla
-                    console.log('Hora normalizada:', { original: session.metadata.horaCompleta, normalizada: horaCompleta });
-
-                    let today = new Date().toLocaleString('es-MX', {
-                        timeZone: 'America/Mexico_City',
-                        hour12: false // formato 24 horas sin AM/PM
-                    });
-                    // Ejemplo: "29/09/2025, 23:42:08"
-                    let [datePart, timePart] = today.split(', ');
-                    let [day, month, year] = datePart.split('/');
-                    let [hours, minutes, seconds] = timePart.split(':');
-                    month = month.padStart(2, '0');
-                    day = day.padStart(2, '0');
-                    hours = hours.padStart(2, '0');
-                    minutes = minutes.padStart(2, '0');
-                    seconds = seconds.padStart(2, '0');
-                    let fecha = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-
-                    let seCreoRegistro = false;
-                    let viajeTour = '';
-                    let query = ``;
-                    let viajeTourId = null;
-
-                    //info tour para calcular fecha de regreso
-                    query = `SELECT * FROM tour WHERE id = ${tourId} `;
-                    let tour = await db.pool.query(query);
-                    tour = tour[0][0];
-                    let duracion = tour.duracion;
-                    let max_pasajeros = tour.max_pasajeros;
-
-
-                    const fecha_ida_formateada = `${fecha_ida_original} ${horaCompleta}`;
-
-
-                    try {
-                        let hora = horaCompleta.split(':');
-
-                        query = `SELECT 
-                        * 
-                        FROM viajeTour 
-                        WHERE CAST(fecha_ida AS DATE) = '${fecha_ida_original}'
-                        AND DATE_FORMAT(CAST(fecha_ida AS TIME), '%H:%i') = '${hora[0]}:${hora[1]}'
-                        AND tour_id = ${tourId};`;
-                        let disponibilidad = await db.pool.query(query);
-                        disponibilidad = disponibilidad[0];
-
-                        //formateo de fecha regreso
-                        const newfecha = addMinutesToDate(new Date(fecha_ida_formateada), parseInt(duracion));
-                        const fecha_regreso = newfecha.getFullYear() + "-" + ("0" + (newfecha.getMonth() + 1)).slice(-2) + "-" + ("0" + newfecha.getDate()).slice(-2) + " " + ("0" + (newfecha.getHours())).slice(-2) + ":" + ("0" + (newfecha.getMinutes())).slice(-2);
-
-                        if (disponibilidad.length == 0) {
-                            query = `SELECT * FROM tour WHERE id = ${tourId}`;
-                            let result = await db.pool.query(query);
-
-                            if (result[0].length == 0) {
-                                console.error("Error en la busqueda del tour por id");
-                                return;
-                            }
-
-                            result = result[0][0];
-
-                            let guia = result.guias;
-                            guia = JSON.parse(guia);
-
-                            query = `INSERT INTO viajeTour 
-                            (fecha_ida, fecha_regreso, lugares_disp, created_at, updated_at, tour_id, guia_id, geo_llegada, geo_salida) 
-                            VALUES 
-                            ('${fecha_ida_formateada}', '${fecha_regreso}', '${max_pasajeros}', '${fecha}', '${fecha}', '${tourId}', '${guia[0].value}', '${null}', '${null}')`;
-
-                            result = await db.pool.query(query);
-                            result = result[0];
-
-                            viajeTourId = result.insertId;
-                            seCreoRegistro = true;
-
-                        } else {
-                            viajeTour = disponibilidad[0];
-                            viajeTourId = disponibilidad[0].id;
-                        }
-
-                    } catch (error) {
-                        console.log('Error en creacion viajeTour:', error);
-                        return;
-                    }
-
-                    let lugares_disp = 0;
-
-                    if (seCreoRegistro) {
-                        lugares_disp = max_pasajeros - parseInt(no_boletos);
-                    } else {
-                        lugares_disp = viajeTour.lugares_disp - parseInt(no_boletos);
-                    }
-                    /*
-                    if (lugares_disp < 0) {
-                        console.error("El numero de boletos excede los lugares disponibles");
-                        return;
-                    }
-                    */
-
-                    query = `INSERT INTO venta 
-                          (id_reservacion, no_boletos, tipos_boletos, total, pagado, fecha_compra, comision, status_traspaso, fecha_comprada, created_at, updated_at, nombre_cliente, cliente_id, correo, viajeTour_id, session_id) 
-                          VALUES 
-                          ('V', '${no_boletos}', '${tipos_boletos}', '${total}', '1', '${fecha}', '0.0', '0', '${fecha_ida_formateada}', '${fecha}', '${fecha}', '${nombre_cliente}', '${cliente_id}', '${correo}', '${viajeTourId}', '${session.id}')`;
-
-                    let result = await db.pool.query(query);
-                    result = result[0];
-
-                    query = `SELECT 
-                          * 
-                          FROM usuario
-                          WHERE id = ${cliente_id}`;
-                    let client = await db.pool.query(query);
-
-                    client = client[0];
-
-                    if (client.length == 0) {
-                        console.error("Error en la busqueda de los datos del cliente");
-                        return;
-                    }
-                    client = client[0];
-
-                    let id_reservacion = result.insertId + 'V' + helperName(client.nombres.split(' ')) + helperName(client.apellidos.split(' '));
-
-                    //creamos el QR
-                    const qrCodeBuffer = await generateQRCode(id_reservacion);
-
-                    query = `UPDATE viajeTour SET
-                      lugares_disp = '${lugares_disp}'
-                      WHERE id     = ${viajeTourId}`;
-
-                    await db.pool.query(query);
-
-                    query = `UPDATE venta SET
-                      id_reservacion = '${id_reservacion}'
-                      WHERE id       = ${result.insertId}`;
-
-                    await db.pool.query(query);
-
-                    // Crear la tabla de boletos
-                    let tiposBoletos = {};
-
-                    try {
-                        tiposBoletos = JSON.parse(tipos_boletos);
-
-                        if (typeof tiposBoletos !== 'object' || tiposBoletos === null || Array.isArray(tiposBoletos)) {
-                            console.error('tipos_boletos no es un objeto válido:', tiposBoletos);
-                            tiposBoletos = { "General": no_boletos };
-                        }
-                    } catch (error) {
-                        console.error('Error parseando tipos_boletos:', error);
-                        tiposBoletos = { "General": no_boletos };
-                    }
-
-                    // 
-                    const precios = {
-                        tipoA: 270,
-                        tipoB: 130,
-                        tipoC: 65
-                    };
-
-                    // 
-                    const nombres = {
-                        tipoA: "Entrada General",
-                        tipoB: "Ciudadano Mexicano",
-                        tipoC: "Estudiante / Adulto Mayor / Niño (-12) / Capacidades diferentes"
-                    };
-
-                    // 
-                    let tiposBoletosArray = Object.entries(tiposBoletos).map(([tipo, cantidad]) => {
-                        return {
-                            nombre: nombres[tipo] || tipo,   // usa nombre bonito si existe
-                            precio: precios[tipo] || 0,
-                            cantidad
-                        };
-                    });
-
-                    // 
-                    let tablaBoletos = `
-  <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse;">
-    <tr style="background-color:#f5f5f5">
-      <th style="text-align:left">Tipo de boleto</th>
-      <th style="text-align:right">Precio</th>
-      <th style="text-align:center">Cantidad</th>
-      <th style="text-align:right">Subtotal</th>
-    </tr>
-`;
-
-
-
-                    tiposBoletosArray.forEach(tipo => {
-                        let subtotal = Number(tipo.precio) * Number(tipo.cantidad);
-
-
-                        tablaBoletos += `
-    <tr>
-      <td style="text-align:left">${tipo.nombre}</td>
-      <td style="text-align:right">$${Number(tipo.precio).toFixed(2)}</td>
-      <td style="text-align:center">${Number(tipo.cantidad)}</td>
-      <td style="text-align:right">$${Number(subtotal).toFixed(2)}</td>
-    </tr>
-  `;
-                    });
-
-                    tablaBoletos += `
-  <tr>
-    <td colspan="2"></td>
-    <td style="text-align:center; font-weight:bold">Total</td>
-    <td style="text-align:right; font-weight:bold">$${Number(total).toFixed(2)}</td>
-  </tr>
-</table>`;
-
-
-                    // Datos para el template
-                    const emailData = {
-                        nombre: nombre_cliente,
-                        password: null,
-                        fecha: fecha_ida_original,
-                        horario: horaCompleta,
-                        boletos: no_boletos,
-                        tablaBoletos: tablaBoletos,
-                        idReservacion: id_reservacion,
-                        total: total,
-                        ubicacionUrl: "https://maps.app.goo.gl/9R17eVrZeTkxyNt88"
-                    };
-
-                    // Enviar el correo al admin y al cliente
-                    const emailHtml = emailTemplate(emailData);
-
-                    let message = {
-                        from: process.env.MAIL,
-                        to: process.env.MAIL,
-                        subject: "¡Confirmación de compra - Museo Casa Kahlo!",
-                        text: "",
-                        html: emailHtml,
-                        attachments: [{
-                            filename: 'qr.png',
-                            content: qrCodeBuffer,
-                            cid: 'qrImage'
-                        }]
-                    }
-
-                    const info = await mailer.sendMail(message);
-                    console.log('Email enviado al admin:', info);
-
-                    message = {
-                        from: process.env.MAIL,
-                        to: correo,
-                        subject: "¡Confirmación de compra - Museo Casa Kahlo!",
-                        text: "",
-                        html: emailHtml,
-                        attachments: [{
-                            filename: 'qr.png',
-                            content: qrCodeBuffer,
-                            cid: 'qrImage'
-                        }]
-                    }
-
-                    const info2 = await mailer.sendMail(message);
-                    console.log('Email enviado al cliente:', info2);
-
-
-                    console.log(` Venta creada exitosamente: ${id_reservacion}, viajeTourId: ${viajeTourId}, fecha: ${fecha_ida_original}, hora: ${horaCompleta}`);
-
-                } catch (error) {
-                    console.error('Error procesando pago en webhook:', error);
-                }
-            } else {
-                console.log('');
-                console.log(' No hay metadata en checkout.session.completed');
-                console.log('');
-                console.log('Session sin metadata:', JSON.stringify(session, null, 2));
-            }
-            break;
-
-        // case 'charge.succeeded':
-        //   // COMENTADO: No necesario, ya se maneja en checkout.session.completed
-        //   console.log('');
-        //   console.log('Charge succeeded event ignorado - ya procesado en checkout.session.completed');
-        //   break;
-
-        case 'payment_intent.succeeded':
-            const paymentIntent_success = event.data.object;
-            console.log('');
-            console.log('Payment Intent succeeded:', paymentIntent_success.id);
-            console.log('PaymentIntent metadata:', paymentIntent_success.metadata);
-            // Similar logic could be added here if needed
-            break;
-
-        case 'payment_intent.payment_failed':
-            const paymentIntent = event.data.object;
-            console.log('Payment failed:', paymentIntent.id);
-            break;
-
-        default:
-            console.log(`Unhandled event type ${event.type}`);
-    }
-
-    // Return a 200 response to acknowledge receipt of the event
-    res.json({ received: true });
 });
 
 app.post('/stripe/create-checkout-session', async (req, res) => {
@@ -3027,13 +3342,78 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
     // Return a 200 response to acknowledge receipt of the event
     res.sendStatus(200);
 
-    // Handle the event
-    switch (event.type) {
-        case 'checkout.session.completed':
-            if (session.payment_status === 'paid') {
-                if (session.metadata) {
+    try {
+        // Handle the event
+        switch (event.type) {
+            case 'checkout.session.completed':
+                if (session.payment_status === 'paid') {
+                    if (session.metadata) {
 
-                    handleSuccessfulPayment(session);
+                        if (!session.metadata?.flow) {
+                            console.log('⚠️ No hay flow en metadata:', session.id);
+                            break;
+                        }
+
+                        if (session.metadata.flow === 'ticket_purchase') {
+                            await handleSuccessfulPayment(session);
+                        }
+
+                        if (session.metadata.flow === 'wallet_topup') {
+                            await handleWalletTopup(session);
+                        }
+
+                    } else {
+                        console.log('');
+                        console.log(' No hay metadata en checkout.session.completed');
+                        console.log('');
+                        console.log('Session sin metadata:', JSON.stringify(session, null, 2));
+                    }
+                }
+                break;
+
+            case 'checkout.session.async_payment_succeeded':
+                if (session.payment_status === 'paid') {
+                    if (session.metadata) {
+
+                        if (!session.metadata?.flow) {
+                            console.log('⚠️ No hay flow en metadata:', session.id);
+                            break;
+                        }
+
+                        if (session.metadata.flow === 'ticket_purchase') {
+                            await handleSuccessfulPayment(session);
+                        }
+                        if (session.metadata.flow === 'wallet_topup') {
+                            await handleWalletTopup(session);
+                        }
+
+                    } else {
+                        console.log('');
+                        console.log(' No hay metadata en checkout.session.completed');
+                        console.log('');
+                        console.log('Session sin metadata:', JSON.stringify(session, null, 2));
+                    }
+                }
+                break;
+
+
+            /* =======================================================
+                PAGOS FALLIDOS O EXPIRADOS
+            ======================================================= */
+            case 'checkout.session.async_payment_failed':
+                if (session.metadata) {
+                    if (!session.metadata?.flow) {
+                        console.log('⚠️ No hay flow en metadata:', session.id);
+                        break;
+                    }
+
+                    if (session.metadata.flow === 'ticket_purchase') {
+                        handleFailedPayment(session);
+                    }
+                    if (session.metadata.flow === 'wallet_topup') {
+                        handleWalletTopupFailed(session);
+                        console.log('⚠️ Recarga fallida:', session.id);
+                    }
 
                 } else {
                     console.log('');
@@ -3041,67 +3421,59 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
                     console.log('');
                     console.log('Session sin metadata:', JSON.stringify(session, null, 2));
                 }
-            }
-            break;
 
-        case 'checkout.session.async_payment_succeeded':
-            if (session.metadata) {
-
-                handleSuccessfulPayment(session);
-
-            } else {
-                console.log('');
-                console.log(' No hay metadata en checkout.session.completed');
-                console.log('');
-                console.log('Session sin metadata:', JSON.stringify(session, null, 2));
-            }
-
-            break;
-
-        case 'checkout.session.async_payment_failed':
-            if (session.metadata) {
-                handleFailedPayment(session);
-            } else {
-                console.log('');
-                console.log(' No hay metadata en checkout.session.completed');
-                console.log('');
-                console.log('Session sin metadata:', JSON.stringify(session, null, 2));
-            }
-
-            break;
+                break;
 
 
-        case "checkout.session.expired":
-            if (session.metadata) {
-                handleFailedPayment(session);
-            } else {
-                console.log('');
-                console.log(' No hay metadata en checkout.session.completed');
-                console.log('');
-                console.log('Session sin metadata:', JSON.stringify(session, null, 2));
-            }
-            break;
+            case "checkout.session.expired":
+                if (session.metadata) {
+                    if (!session.metadata?.flow) {
+                        console.log('⚠️ No hay flow en metadata:', session.id);
+                        break;
+                    }
 
-        case 'payment_intent.succeeded':
-            const paymentIntent_success = event.data.object;
-            console.log('Payment Intent succeeded:', paymentIntent_success.id);
-            console.log('PaymentIntent metadata:', paymentIntent_success.metadata);
-            break;
+                    if (session.metadata.flow === 'ticket_purchase') {
+                        handleFailedPayment(session);
+                    }
+                    if (session.metadata.flow === 'wallet_topup') {
+                        handleWalletTopupFailed(session);
+                        console.log('⚠️ Recarga fallida:', session.id);
+                    }
 
-        case 'payment_intent.payment_failed':
-            const paymentIntent = event.data.object;
-            console.log('Payment failed:', paymentIntent.id);
-            break;
+                } else {
+                    console.log('');
+                    console.log(' No hay metadata en checkout.session.completed');
+                    console.log('');
+                    console.log('Session sin metadata:', JSON.stringify(session, null, 2));
+                }
+                break;
 
-        case 'payment_intent.canceled':
-            console.log("⚠️ Payment Intent canceled:", event.data.object.id);
-            break;
+            /* =======================================================
+              EVENTOS DE PAYMENT INTENT (solo logging por ahora)
+            ======================================================= */
 
-        default:
-            console.log(`Unhandled event type ${event.type}`);
+            case 'payment_intent.succeeded':
+                const paymentIntent_success = event.data.object;
+                console.log('Payment Intent succeeded:', paymentIntent_success.id);
+                console.log('PaymentIntent metadata:', paymentIntent_success.metadata);
+                break;
 
+            case 'payment_intent.payment_failed':
+                const paymentIntent = event.data.object;
+                console.log('Payment failed:', paymentIntent.id);
+                break;
+
+            case 'payment_intent.canceled':
+                console.log("⚠️ Payment Intent canceled:", event.data.object.id);
+                break;
+
+            default:
+                console.log(`Unhandled event type ${event.type}`);
+
+        }
+    } catch (error) {
+        console.error('❌ Error procesando evento:', error);
     }
-
 
 });
 
@@ -4382,7 +4754,7 @@ async function enviarCorreoBoletoAsignado(boletoInfo) {
             tiposBoletos = { "tipoA": no_boletos };
         }
 
-        // Generar un solo código QR para la reservación (como en handleSuccessfulPayment)
+        // Generar un solo código QR para la reservación
         const qrCodeBuffer = await generateQRCode(id_reservacion);
 
         const precios = { tipoA: 215 };
