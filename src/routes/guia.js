@@ -60,7 +60,7 @@ app.get('/obtener/:id', async (req, res) => {
     try {
         let guiaId = req.params.id;
 
-        let query = `SELECT u.id, nombres, apellidos, u.telefono, u.correo, isGuia, foto, identificacion, u.status, u.updated_at, empresa_id, cargo, area, nss, e.nombre AS empresa
+        let query = `SELECT u.id, nombres, apellidos, u.telefono, u.correo, isGuia, foto, identificacion, u.status, u.updated_at, empresa_id, cargo, area, nss, hora_entrada, hora_salida, hora_salida_comer, hora_regreso_comer e.nombre AS empresa
                         FROM usuario 
                         AS u
                         INNER JOIN  empresa 
@@ -94,6 +94,11 @@ app.post('/crear', imageController.upload, async (req, res) => {
     if (!cargo) errors.push({ msg: "El campo cargo debe de contener un valor" });
     if (!area) errors.push({ msg: "El campo area debe de contener un valor" });
     if (!nss) errors.push({ msg: "El campo nss debe de contener un valor" });
+
+    if (!hora_entrada) errors.push({ msg: "El campo hora_entrada debe de contener un valor" });
+    if (!hora_salida) errors.push({ msg: "El campo hora_salida debe de contener un valor" });
+    if (!hora_salida_comer) errors.push({ msg: "El campo hora_salida_comer debe de contener un valor" });
+    if (!hora_regreso_comer) errors.push({ msg: "El campo hora_regreso_comer debe de contener un valor" });
 
 
     if (!telefono) telefono = null;
@@ -192,28 +197,28 @@ app.post('/crear', imageController.upload, async (req, res) => {
 
       query = `INSERT INTO usuario 
           (nombres, apellidos, telefono, correo, password,
-          isGuia, foto, identificacion, empresa_id, cargo, area, nss,
+          isGuia, foto, identificacion, empresa_id, cargo, area, nss, hora_entrada, hora_salida, hora_salida_comer, hora_regreso_comer,
           created_at, updated_at) 
           VALUES 
           ('${nombres}', '${apellidos}', 
           ${telefono ? `'${telefono}'` : 'NULL'},
           '${correo}', 
           '${hashedPassword}', 
-          1, ${fotoDB}, ${identificacionDB}, '${empresa_id}', '${cargo}', '${area}', '${nss}',
+          1, ${fotoDB}, ${identificacionDB}, '${empresa_id}', '${cargo}', '${area}', '${nss}', '${hora_entrada}', '${hora_salida}', '${hora_salida_comer}', '${hora_regreso_comer}',
           '${fecha}', '${fecha}')`;
 
     } else if (tipoColaborador == 'Especialista') {
 
       query = `INSERT INTO usuario 
           (nombres, apellidos, telefono, correo, password,
-          isSpecialist, foto, identificacion, empresa_id, cargo, area, nss,
+          isSpecialist, foto, identificacion, empresa_id, cargo, area, nss, hora_entrada, hora_salida, hora_salida_comer, hora_regreso_comer,
           created_at, updated_at) 
           VALUES 
           ('${nombres}', '${apellidos}', 
           ${telefono ? `'${telefono}'` : 'NULL'},
           '${correo}', 
           '${hashedPassword}', 
-          1, ${fotoDB}, ${identificacionDB}, '${empresa_id}', '${cargo}', '${area}', '${nss}',
+          1, ${fotoDB}, ${identificacionDB}, '${empresa_id}', '${cargo}', '${area}', '${nss}', '${hora_entrada}', '${hora_salida}', '${hora_salida_comer}', '${hora_regreso_comer}',
           '${fecha}', '${fecha}')`;
 
     }
@@ -256,6 +261,11 @@ app.put('/set', imageController.upload, async (req, res) => {
     if (!area) errors.push({ msg: "El campo area debe de contener un valor" });
     if (!nss) errors.push({ msg: "El campo nss debe de contener un valor" });
 
+    if (!hora_entrada) errors.push({ msg: "El campo hora_entrada debe de contener un valor" });
+    if (!hora_salida) errors.push({ msg: "El campo hora_salida debe de contener un valor" });
+    if (!hora_salida_comer) errors.push({ msg: "El campo hora_salida_comer debe de contener un valor" });
+    if (!hora_regreso_comer) errors.push({ msg: "El campo hora_regreso_comer debe de contener un valor" });
+
 
     if (!telefono) telefono = null;
 
@@ -290,6 +300,10 @@ app.put('/set', imageController.upload, async (req, res) => {
         cargo            = '${cargo}',
         area             = '${area}',
         nss              = '${nss}',
+        hora_entrada     = '${hora_entrada}',
+        hora_salida      = '${hora_salida}',
+        hora_salida_comer= '${hora_salida_comer}',
+        hora_regreso_comer= '${hora_regreso_comer}',
         telefono         = ${telefono ? `'${telefono}'` : 'NULL'},`;
 
     // ============================
