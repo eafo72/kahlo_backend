@@ -915,7 +915,7 @@ const handleWalletTopup = async (session) => {
     const sessionId = session.id;
 
     // 🔒 IDEMPOTENCIA
-    const [existing] = await pool.query(
+    const [existing] = await db.pool.query(
         'SELECT id FROM movimientos WHERE stripe_session_id = ?',
         [sessionId]
     );
@@ -925,11 +925,11 @@ const handleWalletTopup = async (session) => {
         return;
     }
 
-    await pool.query('START TRANSACTION');
+    await db.pool.query('START TRANSACTION');
 
     try {
 
-        const [userRows] = await pool.query(
+        const [userRows] = await db.pool.query(
             'SELECT saldo FROM usuario WHERE id = ? FOR UPDATE',
             [customerId]
         );
@@ -941,12 +941,12 @@ const handleWalletTopup = async (session) => {
         const saldoAnterior = parseFloat(userRows[0].saldo);
         const saldoNuevo = saldoAnterior + amount;
 
-        await pool.query(
+        await db.pool.query(
             'UPDATE usuario SET saldo = ? WHERE id = ?',
             [saldoNuevo, customerId]
         );
 
-        await pool.query(`
+        await db.pool.query(`
       INSERT INTO movimientos (
         usuario_id,
         tipo_movimiento,
@@ -968,12 +968,12 @@ const handleWalletTopup = async (session) => {
             sessionId
         ]);
 
-        await pool.query('COMMIT');
+        await db.pool.query('COMMIT');
 
         console.log('✅ Recarga aplicada correctamente:', sessionId);
 
         // Obtener información completa del cliente para el correo
-        const [clientInfo] = await pool.query(
+        const [clientInfo] = await db.pool.query(
             'SELECT nombres, apellidos, correo FROM usuario WHERE id = ?',
             [customerId]
         );
@@ -1057,7 +1057,7 @@ const handleWalletTopup = async (session) => {
         }
 
     } catch (error) {
-        await pool.query('ROLLBACK');
+        await db.pool.query('ROLLBACK');
         console.error('❌ Error en recarga:', error);
         throw error;
     }
@@ -1071,7 +1071,7 @@ const handleWalletTopupFailed = async (session) => {
 
     try {
         // Obtener información del cliente
-        const [clientInfo] = await pool.query(
+        const [clientInfo] = await db.pool.query(
             'SELECT nombres, apellidos, correo FROM usuario WHERE id = ?',
             [customerId]
         );
