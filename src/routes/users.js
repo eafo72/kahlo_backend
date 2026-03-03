@@ -42,7 +42,19 @@ app.get('/clientes', async (req, res) => {
 		res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
 	}
 })
+app.get('/todos', async (req, res) => {
+	try {
 
+		let query = `SELECT id, nombres, apellidos, telefono, correo, isClient, isAdmin, isOperator, isInvestor, isPartner, status 
+                        FROM usuario 
+                        WHERE isClient = 1 OR isAdmin = 1 OR isOperator = 1 OR isInvestor = 1 OR isPartner = 1`;
+		let usuarios = await db.pool.query(query);
+		res.json(usuarios[0]);
+
+	} catch (error) {
+		res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
+	}
+})
 // CREAR UN USUARIO JWT
 app.post('/crear', async (req, res) => {
 	try {
