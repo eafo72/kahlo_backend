@@ -325,7 +325,7 @@ app.get('/obtener/:id', async (req, res) => {
 		let query = `SELECT id, nombres, apellidos, telefono, telefono_emergencia, correo, isClient, status, created_at, name_on_card, card_number, expires_month, expires_year, cvc 
 						FROM usuario 
 						WHERE id=${clientId} 
-						AND isClient = 1`;
+						`;
 
 		let client = await db.pool.query(query);
 
