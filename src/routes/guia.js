@@ -80,7 +80,7 @@ app.get('/obtener/:id', async (req, res) => {
 
 app.post('/crear', imageController.upload, async (req, res) => {
   try {
-    let { nombres, apellidos, telefono, correo, password, empresa_id, tipoColaborador, cargo, area, nss } = req.body;
+    let { nombres, apellidos, telefono, correo, password, empresa_id, tipoColaborador, cargo, area, nss, hora_entrada, hora_salida, hora_salida_comer, hora_regreso_comer } = req.body;
 
     let errors = [];
 
@@ -249,7 +249,7 @@ app.post('/crear', imageController.upload, async (req, res) => {
 
 app.put('/set', imageController.upload, async (req, res) => {
   try {
-    let { id, nombres, apellidos, telefono, empresa_id, cargo, area, nss } = req.body;
+    let { id, nombres, apellidos, telefono, empresa_id, cargo, area, nss, hora_entrada, hora_salida, hora_salida_comer, hora_regreso_comer } = req.body;
 
     let errors = [];
 
