@@ -4474,6 +4474,86 @@ app.get('/checkin-data', async (req, res) => {
     }
 });
 
+router.post('/checador/entrada', async (req, res) => {
+  try {
+
+    const { qr } = req.body;
+
+    if (!qr) {
+      return res.json({ error: true, message: 'QR requerido' });
+    }
+
+    // Validar que sea colaborador
+    if (typeof qr !== 'string' || !qr.endsWith('-Z')) {
+      return res.json({ error: true, message: 'QR inválido' });
+    }
+
+    // Separar partes del QR
+    const partes = qr.split('-');
+
+    if (partes.length < 3) {
+      return res.json({ error: true, message: 'Formato incorrecto' });
+    }
+
+    const qrBase = partes[0]; // solo nos importa esto
+
+    /************ BUSCAR COLABORADOR ************/
+    const [colaboradorRows] = await db.query(
+      `SELECT id, activo
+       FROM colaboradores
+       WHERE qr_base = ?
+       LIMIT 1`,
+      [qrBase]
+    );
+
+    if (!colaboradorRows.length) {
+      return res.json({ error: true, message: 'Colaborador no encontrado' });
+    }
+
+    const colaborador = colaboradorRows[0];
+
+    if (colaborador.activo !== 1) {
+      return res.json({ error: true, message: 'Colaborador inactivo' });
+    }
+
+    /************ OBTENER ÚLTIMO MOVIMIENTO ************/
+    const [ultimoRows] = await db.query(
+      `SELECT tipo
+       FROM checador_movimientos
+       WHERE colaborador_id = ?
+       ORDER BY fecha_hora DESC
+       LIMIT 1`,
+      [colaborador.id]
+    );
+
+    let nuevoTipo = 'entrada';
+
+    if (ultimoRows.length && ultimoRows[0].tipo === 'entrada') {
+      nuevoTipo = 'salida';
+    }
+
+    /************ REGISTRAR MOVIMIENTO ************/
+    await db.query(
+      `INSERT INTO checador_movimientos
+       (colaborador_id, tipo, fecha_hora, dispositivo, created_at)
+       VALUES (?, ?, NOW(), 'torniquete', NOW())`,
+      [colaborador.id, nuevoTipo]
+    );
+
+    console.log(`🕒 Checador ${nuevoTipo} → colaborador ${colaborador.id}`);
+
+    // 🔥 RESPUESTA COMPATIBLE CON MINI-BACK
+    return res.json({
+      error: false,
+      tipo: nuevoTipo
+    });
+
+  } catch (error) {
+    console.error('Error /checador/entrada:', error);
+    return res.json({ error: true, message: 'Error interno' });
+  }
+});
+
 
 app.put('/delete', async (req, res) => {
     try {
