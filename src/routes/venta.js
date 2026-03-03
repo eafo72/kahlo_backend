@@ -4474,7 +4474,7 @@ app.get('/checkin-data', async (req, res) => {
     }
 });
 
-router.post('/checador/entrada', async (req, res) => {
+app.post('/checador/entrada', async (req, res) => {
   try {
 
     const { qr } = req.body;
@@ -4662,7 +4662,7 @@ router.post('/checador/entrada', async (req, res) => {
   }
 });
 
-router.post('/checador/salida', async (req, res) => {
+app.post('/checador/salida', async (req, res) => {
   try {
 
     const { qr } = req.body;
