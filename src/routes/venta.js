@@ -4479,77 +4479,299 @@ router.post('/checador/entrada', async (req, res) => {
 
     const { qr } = req.body;
 
-    if (!qr) {
-      return res.json({ error: true, message: 'QR requerido' });
-    }
-
-    // Validar que sea colaborador
-    if (typeof qr !== 'string' || !qr.endsWith('-Z')) {
+    // 1️⃣ Validar QR
+    if (!qr || !qr.endsWith('-Z')) {
       return res.json({ error: true, message: 'QR inválido' });
     }
 
-    // Separar partes del QR
-    const partes = qr.split('-');
+    const qrBase = qr.split('-')[0];
 
-    if (partes.length < 3) {
-      return res.json({ error: true, message: 'Formato incorrecto' });
-    }
-
-    const qrBase = partes[0]; // solo nos importa esto
-
-    /************ BUSCAR COLABORADOR ************/
-    const [colaboradorRows] = await db.query(
-      `SELECT id, activo
-       FROM colaboradores
+    // 2️⃣ Buscar usuario
+    const [usuarioRows] = await db.query(
+      `SELECT id, activo, isOperator
+       FROM usuario
        WHERE qr_base = ?
        LIMIT 1`,
       [qrBase]
     );
 
-    if (!colaboradorRows.length) {
-      return res.json({ error: true, message: 'Colaborador no encontrado' });
+    if (!usuarioRows.length || usuarioRows[0].activo !== 1) {
+      return res.json({ error: true, message: 'No autorizado' });
     }
 
-    const colaborador = colaboradorRows[0];
+    const usuario = usuarioRows[0];
 
-    if (colaborador.activo !== 1) {
-      return res.json({ error: true, message: 'Colaborador inactivo' });
-    }
-
-    /************ OBTENER ÚLTIMO MOVIMIENTO ************/
+    // 3️⃣ Determinar último movimiento del día
     const [ultimoRows] = await db.query(
-      `SELECT tipo
+      `SELECT tipo_evento
        FROM checador_movimientos
        WHERE colaborador_id = ?
+       AND DATE(fecha_hora) = CURDATE()
        ORDER BY fecha_hora DESC
        LIMIT 1`,
-      [colaborador.id]
+      [usuario.id]
     );
 
-    let nuevoTipo = 'entrada';
+    let tipoEvento = 'entrada_inicial';
 
-    if (ultimoRows.length && ultimoRows[0].tipo === 'entrada') {
-      nuevoTipo = 'salida';
+    if (ultimoRows.length) {
+      const ultimo = ultimoRows[0].tipo_evento;
+
+      if (ultimo === 'salida_comida') {
+        tipoEvento = 'regreso_comida';
+      } else {
+        return res.json({
+          error: true,
+          message: 'Movimiento no permitido'
+        });
+      }
     }
 
-    /************ REGISTRAR MOVIMIENTO ************/
+    // 4️⃣ Obtener horario
+    const ahora = new Date();
+    let diaSemana = ahora.getDay();
+    if (diaSemana === 0) diaSemana = 7;
+
+    let horaProgramada = null;
+    let eventualId = null;
+
+    if (usuario.isOperator === 1) {
+
+      const [eventualRows] = await db.query(
+        `SELECT id, hora_entrada
+         FROM horarios_eventuales
+         WHERE colaborador_id = ?
+         AND fecha = CURDATE()
+         AND utilizado = 0
+         AND activo = 1
+         LIMIT 1`,
+        [usuario.id]
+      );
+
+      if (!eventualRows.length) {
+        return res.json({ error: true, message: 'Sin permiso hoy' });
+      }
+
+      horaProgramada = eventualRows[0].hora_entrada;
+      eventualId = eventualRows[0].id;
+
+    } else {
+
+      const [horarioRows] = await db.query(
+        `SELECT hora_entrada
+         FROM horarios_semanales
+         WHERE colaborador_id = ?
+         AND dia_semana = ?
+         AND activo = 1
+         LIMIT 1`,
+        [usuario.id, diaSemana]
+      );
+
+      if (!horarioRows.length) {
+        return res.json({ error: true, message: 'No trabaja hoy' });
+      }
+
+      horaProgramada = horarioRows[0].hora_entrada;
+    }
+
+    // 5️⃣ Si es regreso de comida → no validar retardo
+    if (tipoEvento === 'regreso_comida') {
+
+      await db.query(
+        `INSERT INTO checador_movimientos
+         (colaborador_id, tipo, fecha_hora,
+          minutos_retardo, clasificacion,
+          autorizado, tipo_evento)
+         VALUES (?, 'entrada', NOW(),
+          0, 'normal', 0, 'regreso_comida')`,
+        [usuario.id]
+      );
+
+      return res.json({ error: false });
+    }
+
+    // 6️⃣ Calcular retardo (solo entrada inicial)
+    const horaActualMin =
+      ahora.getHours() * 60 + ahora.getMinutes();
+
+    const [h, m] = horaProgramada.split(':');
+
+    const horaEntradaMin =
+      parseInt(h) * 60 + parseInt(m);
+
+    let minutosRetardo = horaActualMin - horaEntradaMin;
+    if (minutosRetardo < 0) minutosRetardo = 0;
+
+    let clasificacion = 'normal';
+
+    if (minutosRetardo > 0 && minutosRetardo <= 15)
+      clasificacion = 'retardo_menor';
+
+    if (minutosRetardo > 15 && minutosRetardo <= 30)
+      clasificacion = 'retardo_mayor';
+
+    if (minutosRetardo > 30)
+      clasificacion = 'sin_pase';
+
+    // 7️⃣ Bloqueo >30
+    if (clasificacion === 'sin_pase') {
+
+      await db.query(
+        `INSERT INTO checador_movimientos
+         (colaborador_id, tipo, fecha_hora,
+          minutos_retardo, clasificacion,
+          autorizado, tipo_evento)
+         VALUES (?, 'entrada', NOW(),
+          ?, 'sin_pase',
+          0, 'intento_bloqueado')`,
+        [usuario.id, minutosRetardo]
+      );
+
+      return res.json({
+        error: true,
+        message: 'Requiere autorización'
+      });
+    }
+
+    // 8️⃣ Registrar entrada válida
     await db.query(
       `INSERT INTO checador_movimientos
-       (colaborador_id, tipo, fecha_hora, dispositivo, created_at)
-       VALUES (?, ?, NOW(), 'torniquete', NOW())`,
-      [colaborador.id, nuevoTipo]
+       (colaborador_id, tipo, fecha_hora,
+        minutos_retardo, clasificacion,
+        autorizado, tipo_evento)
+       VALUES (?, 'entrada', NOW(),
+        ?, ?, 0, 'entrada_inicial')`,
+      [usuario.id, minutosRetardo, clasificacion]
     );
 
-    console.log(`🕒 Checador ${nuevoTipo} → colaborador ${colaborador.id}`);
+    // 9️⃣ Si es operador marcar eventual como usado
+    if (eventualId) {
+      await db.query(
+        `UPDATE horarios_eventuales
+         SET utilizado = 1
+         WHERE id = ?`,
+        [eventualId]
+      );
+    }
 
-    // 🔥 RESPUESTA COMPATIBLE CON MINI-BACK
-    return res.json({
-      error: false,
-      tipo: nuevoTipo
-    });
+    return res.json({ error: false });
 
   } catch (error) {
-    console.error('Error /checador/entrada:', error);
+    console.error(error);
+    return res.json({ error: true, message: 'Error interno' });
+  }
+});
+
+router.post('/checador/salida', async (req, res) => {
+  try {
+
+    const { qr } = req.body;
+
+    if (!qr) {
+      return res.json({ error: true, message: 'QR requerido' });
+    }
+
+    const partes = qr.split('-');
+
+    if (partes.length !== 3) {
+      return res.json({ error: true, message: 'QR inválido' });
+    }
+
+    const codigoBase = partes[0];
+    const tipoSalida = partes[1];
+    const idUsuario = partes[2];
+
+    // 1️⃣ Validar código fijo
+    if (codigoBase !== 'SALIDA2026') {
+      return res.json({ error: true, message: 'Código inválido' });
+    }
+
+    // 2️⃣ Validar tipo salida
+    if (tipoSalida !== '1' && tipoSalida !== '2') {
+      return res.json({ error: true, message: 'Tipo inválido' });
+    }
+
+    // 3️⃣ Validar usuario
+    const [usuarioRows] = await db.query(
+      `SELECT id, activo
+       FROM usuario
+       WHERE id = ?
+       LIMIT 1`,
+      [idUsuario]
+    );
+
+    if (!usuarioRows.length || usuarioRows[0].activo !== 1) {
+      return res.json({ error: true, message: 'Usuario no válido' });
+    }
+
+    const usuarioId = usuarioRows[0].id;
+
+    // 4️⃣ Obtener último movimiento del día
+    const [ultimoRows] = await db.query(
+      `SELECT tipo_evento
+       FROM checador_movimientos
+       WHERE colaborador_id = ?
+       AND DATE(fecha_hora) = CURDATE()
+       ORDER BY fecha_hora DESC
+       LIMIT 1`,
+      [usuarioId]
+    );
+
+    if (!ultimoRows.length) {
+      return res.json({
+        error: true,
+        message: 'No ha registrado entrada'
+      });
+    }
+
+    const ultimoEvento = ultimoRows[0].tipo_evento;
+
+    let nuevoEvento = null;
+
+    // 🔹 SALIDA COMIDA
+    if (tipoSalida === '1') {
+
+      if (ultimoEvento !== 'entrada_inicial') {
+        return res.json({
+          error: true,
+          message: 'Secuencia inválida'
+        });
+      }
+
+      nuevoEvento = 'salida_comida';
+    }
+
+    // 🔹 SALIDA FINAL
+    if (tipoSalida === '2') {
+
+      if (
+        ultimoEvento !== 'entrada_inicial' &&
+        ultimoEvento !== 'regreso_comida'
+      ) {
+        return res.json({
+          error: true,
+          message: 'Secuencia inválida'
+        });
+      }
+
+      nuevoEvento = 'salida_final';
+    }
+
+    // 5️⃣ Insertar movimiento
+    await db.query(
+      `INSERT INTO checador_movimientos
+       (colaborador_id, tipo, fecha_hora,
+        minutos_retardo, clasificacion,
+        autorizado, tipo_evento)
+       VALUES (?, 'salida', NOW(),
+        0, 'normal', 0, ?)`,
+      [usuarioId, nuevoEvento]
+    );
+
+    return res.json({ error: false });
+
+  } catch (error) {
+    console.error(error);
     return res.json({ error: true, message: 'Error interno' });
   }
 });
