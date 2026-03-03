@@ -4479,14 +4479,12 @@ app.post('/checador/entrada', async (req, res) => {
 
     const { qr } = req.body;
 
-    // 1️⃣ Validar QR
     if (!qr || !qr.endsWith('-Z')) {
       return res.json({ error: true, message: 'QR inválido' });
     }
 
     const qrBase = qr.split('-')[0];
 
-    // 2️⃣ Buscar usuario
     const [usuarioRows] = await db.query(
       `SELECT id, activo, isOperator
        FROM usuario
@@ -4501,7 +4499,7 @@ app.post('/checador/entrada', async (req, res) => {
 
     const usuario = usuarioRows[0];
 
-    // 3️⃣ Determinar último movimiento del día
+    // Último movimiento
     const [ultimoRows] = await db.query(
       `SELECT tipo_evento
        FROM checador_movimientos
@@ -4527,7 +4525,6 @@ app.post('/checador/entrada', async (req, res) => {
       }
     }
 
-    // 4️⃣ Obtener horario
     const ahora = new Date();
     let diaSemana = ahora.getDay();
     if (diaSemana === 0) diaSemana = 7;
@@ -4574,7 +4571,7 @@ app.post('/checador/entrada', async (req, res) => {
       horaProgramada = horarioRows[0].hora_entrada;
     }
 
-    // 5️⃣ Si es regreso de comida → no validar retardo
+    // REGRESO COMIDA
     if (tipoEvento === 'regreso_comida') {
 
       await db.query(
@@ -4590,14 +4587,10 @@ app.post('/checador/entrada', async (req, res) => {
       return res.json({ error: false });
     }
 
-    // 6️⃣ Calcular retardo (solo entrada inicial)
-    const horaActualMin =
-      ahora.getHours() * 60 + ahora.getMinutes();
-
+    // CALCULAR RETARDO
+    const horaActualMin = ahora.getHours() * 60 + ahora.getMinutes();
     const [h, m] = horaProgramada.split(':');
-
-    const horaEntradaMin =
-      parseInt(h) * 60 + parseInt(m);
+    const horaEntradaMin = parseInt(h) * 60 + parseInt(m);
 
     let minutosRetardo = horaActualMin - horaEntradaMin;
     if (minutosRetardo < 0) minutosRetardo = 0;
@@ -4613,10 +4606,64 @@ app.post('/checador/entrada', async (req, res) => {
     if (minutosRetardo > 30)
       clasificacion = 'sin_pase';
 
-    // 7️⃣ Bloqueo >30
+    // 🔴 BLOQUEO >30
     if (clasificacion === 'sin_pase') {
 
-      await db.query(
+      // 1️⃣ Buscar autorización aprobada
+      const [authRows] = await db.query(
+        `SELECT *
+         FROM autorizaciones_ingreso
+         WHERE id_usuario = ?
+         AND fecha = CURDATE()
+         AND estado = 'aprobado'
+         AND usada = 0
+         LIMIT 1`,
+        [usuario.id]
+      );
+
+      // 🟢 SI EXISTE AUTORIZACIÓN APROBADA → ENTRA
+      if (authRows.length) {
+
+        const autorizacion = authRows[0];
+
+        const [movResult] = await db.query(
+          `INSERT INTO checador_movimientos
+           (colaborador_id, tipo, fecha_hora,
+            minutos_retardo, clasificacion,
+            autorizado, tipo_evento)
+           VALUES (?, 'entrada', NOW(),
+            ?, 'sin_pase',
+            1, 'entrada_autorizada')`,
+          [usuario.id, minutosRetardo]
+        );
+
+        await db.query(
+          `UPDATE autorizaciones_ingreso
+           SET estado = 'usado',
+               usada = 1,
+               updated_at = NOW()
+           WHERE id = ?`,
+          [autorizacion.id]
+        );
+
+        if (eventualId) {
+          await db.query(
+            `UPDATE horarios_eventuales
+             SET utilizado = 1
+             WHERE id = ?`,
+            [eventualId]
+          );
+        }
+
+        return res.json({
+          error: false,
+          autorizado: true
+        });
+      }
+
+      // 🔴 NO EXISTE → CREAR INTENTO + PENDIENTE
+
+      const [movResult] = await db.query(
         `INSERT INTO checador_movimientos
          (colaborador_id, tipo, fecha_hora,
           minutos_retardo, clasificacion,
@@ -4627,13 +4674,40 @@ app.post('/checador/entrada', async (req, res) => {
         [usuario.id, minutosRetardo]
       );
 
+      const movimientoId = movResult.insertId;
+
+      // Verificar que no exista pendiente
+      const [pendiente] = await db.query(
+        `SELECT id FROM autorizaciones_ingreso
+         WHERE id_usuario = ?
+         AND fecha = CURDATE()
+         AND estado = 'pendiente'
+         LIMIT 1`,
+        [usuario.id]
+      );
+
+      if (!pendiente.length) {
+
+        await db.query(
+          `INSERT INTO autorizaciones_ingreso
+           (id_usuario, movimiento_id, fecha,
+            hora_solicitud, estado, usada,
+            created_at, updated_at)
+           VALUES (?, ?, CURDATE(),
+            CURTIME(), 'pendiente', 0,
+            NOW(), NOW())`,
+          [usuario.id, movimientoId]
+        );
+      }
+
       return res.json({
         error: true,
         message: 'Requiere autorización'
       });
     }
 
-    // 8️⃣ Registrar entrada válida
+    // 🟢 ENTRADA NORMAL
+
     await db.query(
       `INSERT INTO checador_movimientos
        (colaborador_id, tipo, fecha_hora,
@@ -4644,7 +4718,6 @@ app.post('/checador/entrada', async (req, res) => {
       [usuario.id, minutosRetardo, clasificacion]
     );
 
-    // 9️⃣ Si es operador marcar eventual como usado
     if (eventualId) {
       await db.query(
         `UPDATE horarios_eventuales
@@ -4773,6 +4846,145 @@ app.post('/checador/salida', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.json({ error: true, message: 'Error interno' });
+  }
+});
+
+app.get('/autorizaciones/pendientes', async (req, res) => {
+  try {
+
+    const [rows] = await db.query(
+      `SELECT 
+          ai.id,
+          ai.id_usuario,
+          ai.fecha,
+          ai.hora_solicitud,
+          ai.motivo,
+          u.nombre,
+          u.apellido
+       FROM autorizaciones_ingreso ai
+       INNER JOIN usuario u ON u.id = ai.id_usuario
+       WHERE ai.estado = 'pendiente'
+       AND ai.fecha = CURDATE()
+       ORDER BY ai.hora_solicitud ASC`
+    );
+
+    return res.json({
+      error: false,
+      data: rows
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.json({
+      error: true,
+      message: 'Error al obtener pendientes'
+    });
+  }
+});
+
+app.post('/autorizaciones/aprobar', async (req, res) => {
+  try {
+
+    const { autorizacion_id, admin_id } = req.body;
+
+    if (!autorizacion_id || !admin_id) {
+      return res.json({
+        error: true,
+        message: 'Datos incompletos'
+      });
+    }
+
+    // Verificar que exista y esté pendiente
+    const [rows] = await db.query(
+      `SELECT *
+       FROM autorizaciones_ingreso
+       WHERE id = ?
+       AND estado = 'pendiente'
+       LIMIT 1`,
+      [autorizacion_id]
+    );
+
+    if (!rows.length) {
+      return res.json({
+        error: true,
+        message: 'Autorización no válida'
+      });
+    }
+
+    // Aprobar
+    await db.query(
+      `UPDATE autorizaciones_ingreso
+       SET estado = 'aprobado',
+           autorizado_por = ?,
+           hora_autorizacion = CURTIME(),
+           updated_at = NOW()
+       WHERE id = ?`,
+      [admin_id, autorizacion_id]
+    );
+
+    return res.json({
+      error: false,
+      message: 'Autorización aprobada'
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.json({
+      error: true,
+      message: 'Error al aprobar'
+    });
+  }
+});
+
+app.post('/autorizaciones/rechazar', async (req, res) => {
+  try {
+
+    const { autorizacion_id, admin_id, motivo } = req.body;
+
+    if (!autorizacion_id || !admin_id) {
+      return res.json({
+        error: true,
+        message: 'Datos incompletos'
+      });
+    }
+
+    const [rows] = await db.query(
+      `SELECT *
+       FROM autorizaciones_ingreso
+       WHERE id = ?
+       AND estado = 'pendiente'
+       LIMIT 1`,
+      [autorizacion_id]
+    );
+
+    if (!rows.length) {
+      return res.json({
+        error: true,
+        message: 'Autorización no válida'
+      });
+    }
+
+    await db.query(
+      `UPDATE autorizaciones_ingreso
+       SET estado = 'rechazado',
+           autorizado_por = ?,
+           motivo = ?,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [admin_id, motivo || null, autorizacion_id]
+    );
+
+    return res.json({
+      error: false,
+      message: 'Autorización rechazada'
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.json({
+      error: true,
+      message: 'Error al rechazar'
+    });
   }
 });
 
