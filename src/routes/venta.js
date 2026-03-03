@@ -6275,5 +6275,59 @@ app.get('/verificarDisponibilidad-test', async (req, res) => {
     res.json({ disponible: true });
 });
 
+app.get('/horarios-usuario/:id_usuario', async (req, res) => {
+    try {
+        const { id_usuario } = req.params;
+
+        if (!id_usuario) {
+            return res.status(400).json({
+                error: true,
+                message: 'El id_usuario es requerido'
+            });
+        }
+
+        const query = `
+            SELECT 
+                hs.id,
+                hs.dia_semana,
+                hs.hora_entrada,
+                hs.hora_salida,
+                hs.tolerancia_minutos,
+                hs.descanso,
+                hs.activo,
+                hs.created_at,
+                hs.updated_at,
+                CASE 
+                    WHEN hs.dia_semana = 1 THEN 'Lunes'
+                    WHEN hs.dia_semana = 2 THEN 'Martes'
+                    WHEN hs.dia_semana = 3 THEN 'Miércoles'
+                    WHEN hs.dia_semana = 4 THEN 'Jueves'
+                    WHEN hs.dia_semana = 5 THEN 'Viernes'
+                    WHEN hs.dia_semana = 6 THEN 'Sábado'
+                    WHEN hs.dia_semana = 7 THEN 'Domingo'
+                    ELSE 'Desconocido'
+                END as nombre_dia
+            FROM horarios_semanales hs
+            WHERE hs.id_usuario = ?
+            ORDER BY hs.dia_semana ASC
+        `;
+
+        const [horarios] = await db.pool.query(query, [id_usuario]);
+
+        return res.json({
+            error: false,
+            data: horarios,
+            total: horarios.length
+        });
+
+    } catch (error) {
+        console.error('Error obteniendo horarios del usuario:', error);
+        return res.status(500).json({
+            error: true,
+            message: 'Error obteniendo los horarios',
+            details: error.message
+        });
+    }
+});
 
 module.exports = app
