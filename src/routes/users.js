@@ -46,7 +46,7 @@ app.get('/clientes', async (req, res) => {
 // CREAR UN USUARIO JWT
 app.post('/crear', async (req, res) => {
 	try {
-		let { nombres, apellidos, correo, password, telefono, telefono_emergencia } = req.body // OBTENER USUARIO, EMAIL Y PASSWORD DE LA PETICIÓN
+		let { nombres, apellidos, correo, password, telefono, telefono_emergencia, tipo_usuario } = req.body // OBTENER USUARIO, EMAIL Y PASSWORD DE LA PETICIÓN
 
 		let errors = Array();
 
@@ -62,11 +62,20 @@ app.post('/crear', async (req, res) => {
 		if (!password) {
 			errors.push({ msg: "El campo password debe de contener un valor" });
 		}
+		if (!tipo_usuario) {
+			errors.push({ msg: "El campo tipo_usuario debe de contener un valor" });
+		}
 		if (!telefono) {
 			telefono = null;
 		}
 		if (!telefono_emergencia) {
 			telefono_emergencia = null;
+		}
+
+		// Validar que tipo_usuario sea uno de los valores permitidos
+		const tiposPermitidos = ['Administrador', 'Cliente', 'Inversionista', 'Partner', 'Tour Operador'];
+		if (!tiposPermitidos.includes(tipo_usuario)) {
+			errors.push({ msg: "El campo tipo_usuario debe ser: Administrador, Cliente, Inversionista, Partner o Tour Operador" });
 		}
 
 		if (errors.length >= 1) {
@@ -103,11 +112,31 @@ app.post('/crear', async (req, res) => {
 		let time = today.getHours() + ':' + today.getMinutes() + ':' + today.getSeconds();
 		let fecha = date + ' ' + time;
 
+		// Determinar qué campo establecer según el tipo de usuario
+		let isAdmin = 0, isClient = 0, isInvestor = 0, isPartner = 0, isOperator = 0;
+		
+		switch(tipo_usuario) {
+			case 'Administrador':
+				isAdmin = 1;
+				break;
+			case 'Cliente':
+				isClient = 1;
+				break;
+			case 'Inversionista':
+				isInvestor = 1;
+				break;
+			case 'Partner':
+				isPartner = 1;
+				break;
+			case 'Tour Operador':
+				isOperator = 1;
+				break;
+		}
 
 		query = `INSERT INTO usuario 
-					(nombres, apellidos, telefono, telefono_emergencia, correo, password, isClient, created_at, updated_at) 
+					(nombres, apellidos, telefono, telefono_emergencia, correo, password, isAdmin, isClient, isInvestor, isPartner, isOperator, created_at, updated_at) 
 					VALUES 
-					('${nombres}', '${apellidos}', '${telefono}', '${telefono_emergencia}', '${correo}', '${hashedPassword}', 1, '${fecha}', '${fecha}')`;
+					('${nombres}', '${apellidos}', '${telefono}', '${telefono_emergencia}', '${correo}', '${hashedPassword}', ${isAdmin}, ${isClient}, ${isInvestor}, ${isPartner}, ${isOperator}, '${fecha}', '${fecha}')`;
 
 
 		let result = await db.pool.query(query);
