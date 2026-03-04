@@ -4873,7 +4873,12 @@ app.post('/checador/salida', async (req, res) => {
 app.get('/checador/movimientos', async (req, res) => {
     try {
 
-        let query = `SELECT * FROM checador_movimientos`;
+        let query = `SELECT 
+        checador_movimientos.*, 
+        CONCAT(usuario.nombres, ' ', usuario.apellidos) AS nombre_colaborador
+        FROM checador_movimientos 
+        INNER JOIN usuario 
+        ON checador_movimientos.colaborador_id = usuario.id`;
         let movimientos = await db.pool.query(query);
         res.json(movimientos[0]);
 
