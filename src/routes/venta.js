@@ -4495,7 +4495,7 @@ app.post('/checador/entrada', async (req, res) => {
         );
 
         if (!usuarioRows.length) return res.json({ error: true, message: 'Usuario no encontrado' });
-        if (usuarioRows[0].activo !== 1) return res.json({ error: true, message: 'Usuario inactivo' });
+        if (usuarioRows[0].status !== 1) return res.json({ error: true, message: 'Usuario inactivo' });
 
         const usuario = usuarioRows[0];
 
@@ -4674,14 +4674,14 @@ app.post('/checador/salida', async (req, res) => {
 
     // 3️⃣ Validar usuario
     const [usuarioRows] = await db.pool.query(
-      `SELECT id, activo
+      `SELECT id, status
        FROM usuario
        WHERE id = ?
        LIMIT 1`,
       [idUsuario]
     );
 
-    if (!usuarioRows.length || usuarioRows[0].activo !== 1) {
+    if (!usuarioRows.length || usuarioRows[0].status !== 1) {
       return res.json({ error: true, message: 'Usuario no válido' });
     }
 
