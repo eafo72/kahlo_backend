@@ -4517,27 +4517,30 @@ app.post('/checador/entrada', async (req, res) => {
         const usuario = usuarioRows[0];
 
         // 3️⃣ OBTENER HORA CDMX REAL
-        const ahoraUTC = new Date();
-        const ahoraCDMX = new Date(
-            ahoraUTC.toLocaleString("en-US", { timeZone: "America/Mexico_City" })
-        );
+       const ahoraUTC = new Date();
 
-        const fechaMysql = ahoraCDMX.toISOString().slice(0, 19).replace('T', ' ');
+         const ahoraCDMX = new Date(
+          ahoraUTC.toLocaleString("en-US", { timeZone: "America/Mexico_City" })
+           );
+
+          const fechaMysql = ahoraCDMX.toLocaleString("sv-SE").replace('T', ' ');
+
+          const fechaHoy = fechaMysql.split(' ')[0];
 
         console.log("🕒 Hora UTC:", ahoraUTC);
         console.log("🕒 Hora CDMX:", ahoraCDMX);
         console.log("🕒 Fecha MySQL a guardar:", fechaMysql);
 
         // 4️⃣ VERIFICAR ÚLTIMO MOVIMIENTO
-        const [ultimoRows] = await db.pool.query(
-            `SELECT tipo_evento 
-             FROM checador_movimientos 
-             WHERE colaborador_id = ? 
-             AND DATE(fecha_hora) = CURDATE()
-             ORDER BY fecha_hora DESC 
-             LIMIT 1`,
-            [usuario.id]
-        );
+      const [ultimoRows] = await db.pool.query(
+    `SELECT tipo_evento 
+     FROM checador_movimientos 
+     WHERE colaborador_id = ? 
+     AND DATE(fecha_hora) = ?
+     ORDER BY fecha_hora DESC 
+     LIMIT 1`,
+    [usuario.id, fechaHoy]
+         );
 
         let tipoEvento = 'entrada_inicial';
 
@@ -4623,16 +4626,16 @@ app.post('/checador/entrada', async (req, res) => {
         // 8️⃣ BLOQUEO MAYOR A 30 MIN
         if (clasificacion === 'sin_pase') {
 
-            const [authRows] = await db.pool.query(
-                `SELECT id 
-                 FROM autorizaciones_ingreso
-                 WHERE id_usuario = ?
-                 AND fecha = CURDATE()
-                 AND estado = 'aprobado'
-                 AND usada = 0
-                 LIMIT 1`,
-                [usuario.id]
-            );
+           const [authRows] = await db.pool.query(
+    `SELECT id 
+     FROM autorizaciones_ingreso
+     WHERE id_usuario = ?
+     AND fecha = ?
+     AND estado = 'aprobado'
+     AND usada = 0
+     LIMIT 1`,
+    [usuario.id, fechaHoy]
+);
 
             if (authRows.length) {
 
@@ -4642,6 +4645,13 @@ app.post('/checador/entrada', async (req, res) => {
                     VALUES (?, 'entrada', ?, ?, 'sin_pase', 1, 'entrada_autorizada')`,
                     [usuario.id, fechaMysql, minutosRetardo]
                 );
+
+                await db.pool.query(
+    `UPDATE autorizaciones_ingreso 
+     SET usada = 1, updated_at = ?
+     WHERE id = ?`,
+    [fechaMysql, authRows[0].id]
+);
 
                 console.log("✅ Entrada autorizada");
 
@@ -4659,12 +4669,19 @@ app.post('/checador/entrada', async (req, res) => {
                     [usuario.id, fechaMysql, minutosRetardo]
                 );
 
-                await db.pool.query(
-                    `INSERT INTO autorizaciones_ingreso
-                    (id_usuario, movimiento_id, fecha, hora_solicitud, estado, usada, created_at, updated_at)
-                    VALUES (?, ?, CURDATE(), CURTIME(), 'pendiente', 0, NOW(), NOW())`,
-                    [usuario.id, movResult.insertId]
-                );
+            await db.pool.query(
+    `INSERT INTO autorizaciones_ingreso
+    (id_usuario, movimiento_id, fecha, hora_solicitud, estado, usada, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'pendiente', 0, ?, ?)`,
+    [
+        usuario.id,
+        movResult.insertId,
+        fechaHoy,
+        fechaMysql.split(' ')[1], // hora_solicitud
+        fechaMysql,               // created_at
+        fechaMysql                // updated_at
+    ]
+);
 
                 console.log("⛔ Intento bloqueado y autorización creada");
 
@@ -4710,6 +4727,7 @@ app.post('/checador/salida', async (req, res) => {
 
     const { qr } = req.body;
 
+    // 1️⃣ VALIDAR QR
     if (!qr || typeof qr !== 'string') {
       console.log("❌ QR requerido");
       return res.json({ error: true, message: 'QR requerido' });
@@ -4757,10 +4775,13 @@ app.post('/checador/salida', async (req, res) => {
 
     const fechaHoy = fechaMysql.split(' ')[0];
 
+    const inicioDia = fechaHoy + " 00:00:00";
+    const finDia = fechaHoy + " 23:59:59";
+
     console.log("🕒 Hora CDMX:", ahoraCDMX);
     console.log("🕒 Fecha MySQL:", fechaMysql);
 
-    // 1️⃣ Validar usuario activo
+    // 2️⃣ VALIDAR USUARIO ACTIVO
     const [usuarioRows] = await db.pool.query(
       `SELECT id, status
        FROM usuario
@@ -4774,15 +4795,15 @@ app.post('/checador/salida', async (req, res) => {
       return res.json({ error: true, message: 'Usuario no válido' });
     }
 
-    // 2️⃣ Obtener último movimiento del día usando fecha CDMX
+    // 3️⃣ OBTENER ÚLTIMO MOVIMIENTO DEL DÍA (OPTIMIZADO)
     const [ultimoRows] = await db.pool.query(
       `SELECT tipo_evento
        FROM checador_movimientos
        WHERE colaborador_id = ?
-       AND DATE(fecha_hora) = ?
+       AND fecha_hora BETWEEN ? AND ?
        ORDER BY fecha_hora DESC
        LIMIT 1`,
-      [idUsuario, fechaHoy]
+      [idUsuario, inicioDia, finDia]
     );
 
     if (!ultimoRows.length) {
@@ -4796,9 +4817,18 @@ app.post('/checador/salida', async (req, res) => {
     const ultimoEvento = ultimoRows[0].tipo_evento;
     console.log("🔎 Último evento:", ultimoEvento);
 
+    // 🔒 BLOQUEAR CUALQUIER ACCIÓN SI YA HAY SALIDA FINAL
+    if (ultimoEvento === 'salida_final') {
+      console.log("❌ Ya tiene salida final");
+      return res.json({
+        error: true,
+        message: 'Ya registró salida final'
+      });
+    }
+
     let nuevoEvento = null;
 
-    // 🔹 SALIDA COMIDA
+    // 🔹 SALIDA COMIDA (NO TOCADA, MISMA LÓGICA)
     if (tipoSalida === '1') {
 
       if (
@@ -4833,16 +4863,35 @@ app.post('/checador/salida', async (req, res) => {
       nuevoEvento = 'salida_final';
     }
 
-    // 🔒 Bloquear doble salida final
-    if (ultimoEvento === 'salida_final') {
-      console.log("❌ Ya tiene salida final");
+    // 🔐 VALIDACIÓN EXTRA DE SEGURIDAD
+    if (!nuevoEvento) {
+      console.log("❌ No se pudo determinar tipo de salida");
+      return res.json({
+        error: true,
+        message: 'Error determinando tipo de salida'
+      });
+    }
+
+    // 🛡 RECHECK PARA EVITAR DOBLE REQUEST RÁPIDO
+    const [recheckRows] = await db.pool.query(
+      `SELECT tipo_evento
+       FROM checador_movimientos
+       WHERE colaborador_id = ?
+       AND fecha_hora BETWEEN ? AND ?
+       ORDER BY fecha_hora DESC
+       LIMIT 1`,
+      [idUsuario, inicioDia, finDia]
+    );
+
+    if (recheckRows.length && recheckRows[0].tipo_evento === 'salida_final') {
+      console.log("❌ Recheck detectó salida final ya registrada");
       return res.json({
         error: true,
         message: 'Ya registró salida final'
       });
     }
 
-    // 3️⃣ Insertar salida
+    // 4️⃣ INSERTAR SALIDA
     await db.pool.query(
       `INSERT INTO checador_movimientos
        (colaborador_id, tipo, fecha_hora,
