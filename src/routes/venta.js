@@ -6330,4 +6330,96 @@ app.get('/horarios-usuario/:id_usuario', async (req, res) => {
     }
 });
 
+app.post('/horarios-usuario-crear', async (req, res) => {
+    try {
+        const { id_usuario, horarios } = req.body;
+
+        if (!id_usuario || !horarios || !Array.isArray(horarios)) {
+            return res.status(400).json({
+                error: true,
+                message: 'Se requiere id_usuario y horarios (array)'
+            });
+        }
+
+        const connection = await db.pool.getConnection();
+        await connection.beginTransaction();
+
+        try {
+            // Eliminar horarios existentes del usuario
+            await connection.query(
+                'DELETE FROM horarios_semanales WHERE id_usuario = ?',
+                [id_usuario]
+            );
+
+            // Insertar nuevos horarios
+            for (const horario of horarios) {
+                const {
+                    dia_semana,
+                    hora_entrada,
+                    hora_salida,
+                    tolerancia_minutos = 15,
+                    activo = 1
+                } = horario;
+
+                // Validar campos requeridos
+                if (!dia_semana || !hora_entrada || !hora_salida) {
+                    await connection.rollback();
+                    return res.status(400).json({
+                        error: true,
+                        message: 'Cada horario requiere dia_semana, hora_entrada y hora_salida'
+                    });
+                }
+
+                // Validar que dia_semana esté entre 1 y 7
+                if (dia_semana < 1 || dia_semana > 7) {
+                    await connection.rollback();
+                    return res.status(400).json({
+                        error: true,
+                        message: 'dia_semana debe estar entre 1 (Lunes) y 7 (Domingo)'
+                    });
+                }
+
+                // Determinar si es día de descanso (cuando activo = 0)
+                const descanso = activo === 0 ? 1 : 0;
+
+                await connection.query(
+                    `INSERT INTO horarios_semanales 
+                     (id_usuario, dia_semana, hora_entrada, hora_salida, tolerancia_minutos, descanso, activo, created_at, updated_at) 
+                     VALUES 
+                     (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                    [id_usuario, dia_semana, hora_entrada, hora_salida, tolerancia_minutos, descanso, activo]
+                );
+            }
+
+            await connection.commit();
+
+            return res.json({
+                error: false,
+                message: 'Horarios creados exitosamente',
+                total: horarios.length,
+                horarios_creados: horarios
+            });
+
+        } catch (error) {
+            await connection.rollback();
+            console.error('Error creando horarios:', error);
+            return res.status(500).json({
+                error: true,
+                message: 'Error creando los horarios',
+                details: error.message
+            });
+        } finally {
+            connection.release();
+        }
+
+    } catch (error) {
+        console.error('Error en horarios-usuario-crear:', error);
+        return res.status(500).json({
+            error: true,
+            message: 'Error interno del servidor',
+            details: error.message
+        });
+    }
+});
+
 module.exports = app
