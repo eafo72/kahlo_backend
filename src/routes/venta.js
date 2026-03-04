@@ -6355,11 +6355,12 @@ app.post('/horarios-usuario-crear', async (req, res) => {
             for (const horario of horarios) {
                 const {
                     dia_semana,
-                    hora_entrada,
-                    hora_salida,
                     tolerancia_minutos = 15,
                     activo = 1
                 } = horario;
+
+                // Extraer hora_entrada y hora_salida como variables mutables
+                let { hora_entrada, hora_salida } = horario;
 
                 // Validar campos requeridos
                 if (!dia_semana) {
