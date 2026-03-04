@@ -4569,6 +4569,12 @@ app.post('/checador/entrada', async (req, res) => {
             });
         }
 
+        console.log("Hora CDMX:", horaCDMX.toString());
+console.log("Hora entrada DB:", horarioRows[0].hora_entrada);
+console.log("Min actuales:", minutosActuales);
+console.log("Min programados:", minutosProgramados);
+console.log("Retardo:", minutosRetardo);
+
         // 6. Calcular retardo
         const horaActualMin = ahora.getHours() * 60 + ahora.getMinutes();
         const [h, m] = horaProgramada.split(':');
