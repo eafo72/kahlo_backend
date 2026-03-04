@@ -4490,7 +4490,7 @@ app.post('/checador/entrada', async (req, res) => {
 
         // 2. Buscar usuario
         const [usuarioRows] = await db.pool.query(
-            `SELECT id, activo FROM usuario WHERE id = ? LIMIT 1`,
+            `SELECT id, status FROM usuario WHERE id = ? LIMIT 1`,
             [usuarioId]
         );
 
