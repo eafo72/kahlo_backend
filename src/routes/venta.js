@@ -4688,7 +4688,7 @@ app.post('/checador/salida', async (req, res) => {
 
     const { qr } = req.body;
 
-    if (!qr) {
+    if (!qr || typeof qr !== 'string') {
       return res.json({ error: true, message: 'QR requerido' });
     }
 
@@ -4700,7 +4700,7 @@ app.post('/checador/salida', async (req, res) => {
 
     const codigoBase = partes[0];
     const tipoSalida = partes[1];
-    const idUsuario = partes[2];
+    const idUsuarioRaw = partes[2];
 
     // 1️⃣ Validar código fijo
     if (codigoBase !== 'SALIDA2026') {
@@ -4712,7 +4712,13 @@ app.post('/checador/salida', async (req, res) => {
       return res.json({ error: true, message: 'Tipo inválido' });
     }
 
-    // 3️⃣ Validar usuario
+    const idUsuario = parseInt(idUsuarioRaw);
+
+    if (isNaN(idUsuario)) {
+      return res.json({ error: true, message: 'Usuario inválido' });
+    }
+
+    // 3️⃣ Validar usuario activo
     const [usuarioRows] = await db.pool.query(
       `SELECT id, status
        FROM usuario
@@ -4725,17 +4731,15 @@ app.post('/checador/salida', async (req, res) => {
       return res.json({ error: true, message: 'Usuario no válido' });
     }
 
-    const usuarioId = usuarioRows[0].id;
-
     // 4️⃣ Obtener último movimiento del día
     const [ultimoRows] = await db.pool.query(
       `SELECT tipo_evento
        FROM checador_movimientos
-       WHERE colaborador_id = ?
+       WHERE id_usuario = ?
        AND DATE(fecha_hora) = CURDATE()
        ORDER BY fecha_hora DESC
        LIMIT 1`,
-      [usuarioId]
+      [idUsuario]
     );
 
     if (!ultimoRows.length) {
@@ -4749,10 +4753,15 @@ app.post('/checador/salida', async (req, res) => {
 
     let nuevoEvento = null;
 
-    // 🔹 SALIDA COMIDA
+    // 🔹 SALIDA A COMIDA
     if (tipoSalida === '1') {
 
-      if (ultimoEvento !== 'entrada_inicial') {
+      // Puede salir a comida si viene de:
+      // entrada_inicial o entrada_autorizada
+      if (
+        ultimoEvento !== 'entrada_inicial' &&
+        ultimoEvento !== 'entrada_autorizada'
+      ) {
         return res.json({
           error: true,
           message: 'Secuencia inválida'
@@ -4765,9 +4774,14 @@ app.post('/checador/salida', async (req, res) => {
     // 🔹 SALIDA FINAL
     if (tipoSalida === '2') {
 
+      // Puede salir final si viene de:
+      // entrada_inicial
+      // regreso_comida
+      // entrada_autorizada
       if (
         ultimoEvento !== 'entrada_inicial' &&
-        ultimoEvento !== 'regreso_comida'
+        ultimoEvento !== 'regreso_comida' &&
+        ultimoEvento !== 'entrada_autorizada'
       ) {
         return res.json({
           error: true,
@@ -4778,22 +4792,37 @@ app.post('/checador/salida', async (req, res) => {
       nuevoEvento = 'salida_final';
     }
 
+    // 🔒 Bloquear doble salida final
+    if (ultimoEvento === 'salida_final') {
+      return res.json({
+        error: true,
+        message: 'Ya registró salida final'
+      });
+    }
+
     // 5️⃣ Insertar movimiento
     await db.pool.query(
       `INSERT INTO checador_movimientos
-       (colaborador_id, tipo, fecha_hora,
+       (id_usuario, tipo, fecha_hora,
         minutos_retardo, clasificacion,
         autorizado, tipo_evento)
        VALUES (?, 'salida', NOW(),
         0, 'normal', 0, ?)`,
-      [usuarioId, nuevoEvento]
+      [idUsuario, nuevoEvento]
     );
 
-    return res.json({ error: false });
+    return res.json({
+      error: false,
+      message: 'Salida registrada correctamente'
+    });
 
   } catch (error) {
-    console.error(error);
-    return res.json({ error: true, message: 'Error interno' });
+    console.error('🔥 ERROR EN SALIDA:', error);
+    return res.json({
+      error: true,
+      message: 'Error interno',
+      detalle: error.message
+    });
   }
 });
 
