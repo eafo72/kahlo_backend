@@ -4704,15 +4704,21 @@ app.post('/checador/entrada', async (req, res) => {
 app.post('/checador/salida', async (req, res) => {
   try {
 
+    console.log("====================================");
+    console.log("📤 NUEVA SOLICITUD DE SALIDA");
+    console.log("Body:", req.body);
+
     const { qr } = req.body;
 
     if (!qr || typeof qr !== 'string') {
+      console.log("❌ QR requerido");
       return res.json({ error: true, message: 'QR requerido' });
     }
 
     const partes = qr.split('-');
 
     if (partes.length !== 3) {
+      console.log("❌ QR inválido estructura");
       return res.json({ error: true, message: 'QR inválido' });
     }
 
@@ -4720,23 +4726,41 @@ app.post('/checador/salida', async (req, res) => {
     const tipoSalida = partes[1];
     const idUsuarioRaw = partes[2];
 
-    // 1️⃣ Validar código fijo
     if (codigoBase !== 'SALIDA2026') {
+      console.log("❌ Código base inválido");
       return res.json({ error: true, message: 'Código inválido' });
     }
 
-    // 2️⃣ Validar tipo salida
     if (tipoSalida !== '1' && tipoSalida !== '2') {
+      console.log("❌ Tipo salida inválido");
       return res.json({ error: true, message: 'Tipo inválido' });
     }
 
     const idUsuario = parseInt(idUsuarioRaw);
 
     if (isNaN(idUsuario)) {
+      console.log("❌ ID usuario inválido");
       return res.json({ error: true, message: 'Usuario inválido' });
     }
 
-    // 3️⃣ Validar usuario activo
+    console.log("👤 Usuario ID:", idUsuario);
+    console.log("🔢 Tipo salida:", tipoSalida);
+
+    // 🕒 Hora CDMX REAL
+    const ahoraCDMX = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" })
+    );
+
+    const fechaMysql = ahoraCDMX
+      .toLocaleString("sv-SE")
+      .replace('T', ' ');
+
+    const fechaHoy = fechaMysql.split(' ')[0];
+
+    console.log("🕒 Hora CDMX:", ahoraCDMX);
+    console.log("🕒 Fecha MySQL:", fechaMysql);
+
+    // 1️⃣ Validar usuario activo
     const [usuarioRows] = await db.pool.query(
       `SELECT id, status
        FROM usuario
@@ -4746,21 +4770,23 @@ app.post('/checador/salida', async (req, res) => {
     );
 
     if (!usuarioRows.length || usuarioRows[0].status !== 1) {
+      console.log("❌ Usuario no válido");
       return res.json({ error: true, message: 'Usuario no válido' });
     }
 
-    // 4️⃣ Obtener último movimiento del día
+    // 2️⃣ Obtener último movimiento del día usando fecha CDMX
     const [ultimoRows] = await db.pool.query(
       `SELECT tipo_evento
        FROM checador_movimientos
-       WHERE id_usuario = ?
-       AND DATE(fecha_hora) = CURDATE()
+       WHERE colaborador_id = ?
+       AND DATE(fecha_hora) = ?
        ORDER BY fecha_hora DESC
        LIMIT 1`,
-      [idUsuario]
+      [idUsuario, fechaHoy]
     );
 
     if (!ultimoRows.length) {
+      console.log("❌ No tiene entrada previa");
       return res.json({
         error: true,
         message: 'No ha registrado entrada'
@@ -4768,18 +4794,18 @@ app.post('/checador/salida', async (req, res) => {
     }
 
     const ultimoEvento = ultimoRows[0].tipo_evento;
+    console.log("🔎 Último evento:", ultimoEvento);
 
     let nuevoEvento = null;
 
-    // 🔹 SALIDA A COMIDA
+    // 🔹 SALIDA COMIDA
     if (tipoSalida === '1') {
 
-      // Puede salir a comida si viene de:
-      // entrada_inicial o entrada_autorizada
       if (
         ultimoEvento !== 'entrada_inicial' &&
         ultimoEvento !== 'entrada_autorizada'
       ) {
+        console.log("❌ Secuencia inválida comida");
         return res.json({
           error: true,
           message: 'Secuencia inválida'
@@ -4792,15 +4818,12 @@ app.post('/checador/salida', async (req, res) => {
     // 🔹 SALIDA FINAL
     if (tipoSalida === '2') {
 
-      // Puede salir final si viene de:
-      // entrada_inicial
-      // regreso_comida
-      // entrada_autorizada
       if (
         ultimoEvento !== 'entrada_inicial' &&
         ultimoEvento !== 'regreso_comida' &&
         ultimoEvento !== 'entrada_autorizada'
       ) {
+        console.log("❌ Secuencia inválida final");
         return res.json({
           error: true,
           message: 'Secuencia inválida'
@@ -4812,22 +4835,25 @@ app.post('/checador/salida', async (req, res) => {
 
     // 🔒 Bloquear doble salida final
     if (ultimoEvento === 'salida_final') {
+      console.log("❌ Ya tiene salida final");
       return res.json({
         error: true,
         message: 'Ya registró salida final'
       });
     }
 
-    // 5️⃣ Insertar movimiento
+    // 3️⃣ Insertar salida
     await db.pool.query(
       `INSERT INTO checador_movimientos
-       (id_usuario, tipo, fecha_hora,
+       (colaborador_id, tipo, fecha_hora,
         minutos_retardo, clasificacion,
         autorizado, tipo_evento)
-       VALUES (?, 'salida', NOW(),
-        0, 'normal', 0, ?)`,
-      [idUsuario, nuevoEvento]
+       VALUES (?, 'salida', ?, 0, 'normal', 0, ?)`,
+      [idUsuario, fechaMysql, nuevoEvento]
     );
+
+    console.log("✅ Salida registrada:", nuevoEvento);
+    console.log("====================================");
 
     return res.json({
       error: false,
@@ -4847,6 +4873,18 @@ app.post('/checador/salida', async (req, res) => {
 app.get('/autorizaciones/pendientes', async (req, res) => {
   try {
 
+    console.log("📋 CONSULTANDO AUTORIZACIONES PENDIENTES");
+
+    const ahoraCDMX = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" })
+    );
+
+    const fechaHoy = ahoraCDMX
+      .toLocaleString("sv-SE")
+      .split(' ')[0];
+
+    console.log("📅 Fecha CDMX usada:", fechaHoy);
+
     const [rows] = await db.pool.query(
       `SELECT 
           ai.id,
@@ -4859,8 +4897,9 @@ app.get('/autorizaciones/pendientes', async (req, res) => {
        FROM autorizaciones_ingreso ai
        INNER JOIN usuario u ON u.id = ai.id_usuario
        WHERE ai.estado = 'pendiente'
-       AND ai.fecha = CURDATE()
-       ORDER BY ai.hora_solicitud ASC`
+       AND ai.fecha = ?
+       ORDER BY ai.hora_solicitud ASC`,
+      [fechaHoy]
     );
 
     return res.json({
@@ -4869,7 +4908,7 @@ app.get('/autorizaciones/pendientes', async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("🔥 ERROR EN PENDIENTES:", error);
     return res.json({
       error: true,
       message: 'Error al obtener pendientes'
@@ -4880,6 +4919,9 @@ app.get('/autorizaciones/pendientes', async (req, res) => {
 app.post('/autorizaciones/aprobar', async (req, res) => {
   try {
 
+    console.log("✅ APROBANDO AUTORIZACIÓN");
+    console.log("Body:", req.body);
+
     const { autorizacion_id, admin_id } = req.body;
 
     if (!autorizacion_id || !admin_id) {
@@ -4889,7 +4931,16 @@ app.post('/autorizaciones/aprobar', async (req, res) => {
       });
     }
 
-    // Verificar que exista y esté pendiente
+    const ahoraCDMX = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" })
+    );
+
+    const fechaHora = ahoraCDMX
+      .toLocaleString("sv-SE")
+      .replace('T', ' ');
+
+    const horaSolo = fechaHora.split(' ')[1];
+
     const [rows] = await db.pool.query(
       `SELECT *
        FROM autorizaciones_ingreso
@@ -4906,16 +4957,17 @@ app.post('/autorizaciones/aprobar', async (req, res) => {
       });
     }
 
-    // Aprobar
     await db.pool.query(
       `UPDATE autorizaciones_ingreso
        SET estado = 'aprobado',
            autorizado_por = ?,
-           hora_autorizacion = CURTIME(),
-           updated_at = NOW()
+           hora_autorizacion = ?,
+           updated_at = ?
        WHERE id = ?`,
-      [admin_id, autorizacion_id]
+      [admin_id, horaSolo, fechaHora, autorizacion_id]
     );
+
+    console.log("✔ Autorización aprobada correctamente");
 
     return res.json({
       error: false,
@@ -4923,7 +4975,7 @@ app.post('/autorizaciones/aprobar', async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("🔥 ERROR EN APROBAR:", error);
     return res.json({
       error: true,
       message: 'Error al aprobar'
@@ -4934,6 +4986,9 @@ app.post('/autorizaciones/aprobar', async (req, res) => {
 app.post('/autorizaciones/rechazar', async (req, res) => {
   try {
 
+    console.log("❌ RECHAZANDO AUTORIZACIÓN");
+    console.log("Body:", req.body);
+
     const { autorizacion_id, admin_id, motivo } = req.body;
 
     if (!autorizacion_id || !admin_id) {
@@ -4942,6 +4997,14 @@ app.post('/autorizaciones/rechazar', async (req, res) => {
         message: 'Datos incompletos'
       });
     }
+
+    const ahoraCDMX = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" })
+    );
+
+    const fechaHora = ahoraCDMX
+      .toLocaleString("sv-SE")
+      .replace('T', ' ');
 
     const [rows] = await db.pool.query(
       `SELECT *
@@ -4964,10 +5027,12 @@ app.post('/autorizaciones/rechazar', async (req, res) => {
        SET estado = 'rechazado',
            autorizado_por = ?,
            motivo = ?,
-           updated_at = NOW()
+           updated_at = ?
        WHERE id = ?`,
-      [admin_id, motivo || null, autorizacion_id]
+      [admin_id, motivo || null, fechaHora, autorizacion_id]
     );
+
+    console.log("✔ Autorización rechazada correctamente");
 
     return res.json({
       error: false,
@@ -4975,7 +5040,7 @@ app.post('/autorizaciones/rechazar', async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("🔥 ERROR EN RECHAZAR:", error);
     return res.json({
       error: true,
       message: 'Error al rechazar'
