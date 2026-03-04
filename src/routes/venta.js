@@ -4475,73 +4475,33 @@ app.get('/checkin-data', async (req, res) => {
 });
 
 app.post('/checador/entrada', async (req, res) => {
-    try {
-        const { qr } = req.body;
-        console.log('--- 🕒 PROCESANDO ENTRADA (SOLO SEMANAL) ---', qr);
+  try {
 
-        // 1. Validar formato de QR (34TUBA-1-Z)
-        if (!qr || typeof qr !== 'string') return res.json({ error: true, message: 'QR inválido' });
-        
-        const match = qr.match(/^(\d+)/);
-        if (!match) return res.json({ error: true, message: 'ID no encontrado' });
-        const usuarioId = parseInt(match[1]);
+    const { qr } = req.body;
+    console.log('TEST QR:', qr);
 
-        // 2. Buscar usuario (Columna 'status' según tu checkin funcional)
-        const [usuarioRows] = await db.pool.query(
-            `SELECT id, nombres, status FROM usuario WHERE id = ? LIMIT 1`,
-            [usuarioId]
-        );
+    const match = qr.match(/^(\d+)/);
+    if (!match) return res.json({ error: true, message: 'ID no válido' });
 
-        if (!usuarioRows.length) return res.json({ error: true, message: 'Usuario no existe' });
-        if (usuarioRows[0].status !== 1) return res.json({ error: true, message: 'Usuario inactivo' });
+    const usuarioId = parseInt(match[1]);
 
-        const usuario = usuarioRows[0];
+    console.log('UsuarioID detectado:', usuarioId);
 
-        // 3. Obtener Horario Semanal
-        const ahora = new Date();
-        let diaSemana = ahora.getDay(); 
-        if (diaSemana === 0) diaSemana = 7; // Ajuste Domingo = 7
+    const [result] = await db.pool.query(
+      `INSERT INTO checador_movimientos 
+       (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
+       VALUES (?, 'entrada', NOW(), 0, 'test', 0, 'test_manual')`,
+      [usuarioId]
+    );
 
-        const [horarioRows] = await db.pool.query(
-            `SELECT hora_entrada FROM horarios_semanales 
-             WHERE id_usuario = ? AND dia_semana = ? AND activo = 1 LIMIT 1`,
-            [usuario.id, diaSemana]
-        );
+    console.log('Insert ID:', result.insertId);
 
-        if (!horarioRows.length) {
-            return res.json({ error: true, message: 'No tienes horario asignado para hoy' });
-        }
+    return res.json({ error: false, message: 'Insert directo OK' });
 
-        const horaProgramada = horarioRows[0].hora_entrada;
-
-        // 4. Calcular Retardo Simple
-        const horaActualMin = ahora.getHours() * 60 + ahora.getMinutes();
-        const [h, m] = horaProgramada.split(':');
-        const horaEntradaMin = parseInt(h) * 60 + parseInt(m);
-        
-        let minutosRetardo = Math.max(0, horaActualMin - horaEntradaMin);
-        let clasificacion = minutosRetardo > 0 ? 'retardo' : 'normal';
-
-        // 5. INSERTAR EN MOVIMIENTOS
-        // Nota: Asegúrate que en 'checador_movimientos' la columna sea 'colaborador_id' o 'id_usuario'
-        // Si el error de antes persiste, cambia 'colaborador_id' por 'id_usuario' abajo:
-        await db.pool.query(
-            `INSERT INTO checador_movimientos 
-            (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento) 
-            VALUES (?, 'entrada', CONVERT_TZ(NOW(), '+00:00', '-06:00'), ?, ?, 0, 'entrada_inicial')`,
-            [usuario.id, minutosRetardo, clasificacion]
-        );
-
-        return res.json({ 
-            error: false, 
-            message: `Bienvenido ${usuario.nombres}`,
-            retardo: minutosRetardo 
-        });
-
-    } catch (error) {
-        console.error('❌ ERROR EN ENTRADA:', error);
-        return res.json({ error: true, message: 'Error interno', detalle: error.message });
-    }
+  } catch (error) {
+    console.error('ERROR DIRECTO:', error);
+    return res.json({ error: true, message: error.message });
+  }
 });
 
 
