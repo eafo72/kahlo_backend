@@ -4673,7 +4673,7 @@ app.post('/checador/salida', async (req, res) => {
     }
 
     // 3️⃣ Validar usuario
-    const [usuarioRows] = await db.query(
+    const [usuarioRows] = await db.pool.query(
       `SELECT id, activo
        FROM usuario
        WHERE id = ?
@@ -4688,7 +4688,7 @@ app.post('/checador/salida', async (req, res) => {
     const usuarioId = usuarioRows[0].id;
 
     // 4️⃣ Obtener último movimiento del día
-    const [ultimoRows] = await db.query(
+    const [ultimoRows] = await db.pool.query(
       `SELECT tipo_evento
        FROM checador_movimientos
        WHERE colaborador_id = ?
@@ -4739,7 +4739,7 @@ app.post('/checador/salida', async (req, res) => {
     }
 
     // 5️⃣ Insertar movimiento
-    await db.query(
+    await db.pool.query(
       `INSERT INTO checador_movimientos
        (colaborador_id, tipo, fecha_hora,
         minutos_retardo, clasificacion,
@@ -4760,7 +4760,7 @@ app.post('/checador/salida', async (req, res) => {
 app.get('/autorizaciones/pendientes', async (req, res) => {
   try {
 
-    const [rows] = await db.query(
+    const [rows] = await db.pool.query(
       `SELECT 
           ai.id,
           ai.id_usuario,
@@ -4803,7 +4803,7 @@ app.post('/autorizaciones/aprobar', async (req, res) => {
     }
 
     // Verificar que exista y esté pendiente
-    const [rows] = await db.query(
+    const [rows] = await db.pool.query(
       `SELECT *
        FROM autorizaciones_ingreso
        WHERE id = ?
@@ -4820,7 +4820,7 @@ app.post('/autorizaciones/aprobar', async (req, res) => {
     }
 
     // Aprobar
-    await db.query(
+    await db.pool.query(
       `UPDATE autorizaciones_ingreso
        SET estado = 'aprobado',
            autorizado_por = ?,
@@ -4856,7 +4856,7 @@ app.post('/autorizaciones/rechazar', async (req, res) => {
       });
     }
 
-    const [rows] = await db.query(
+    const [rows] = await db.pool.query(
       `SELECT *
        FROM autorizaciones_ingreso
        WHERE id = ?
@@ -4872,7 +4872,7 @@ app.post('/autorizaciones/rechazar', async (req, res) => {
       });
     }
 
-    await db.query(
+    await db.pool.query(
       `UPDATE autorizaciones_ingreso
        SET estado = 'rechazado',
            autorizado_por = ?,
