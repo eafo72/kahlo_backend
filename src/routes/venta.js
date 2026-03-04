@@ -6362,11 +6362,11 @@ app.post('/horarios-usuario-crear', async (req, res) => {
                 } = horario;
 
                 // Validar campos requeridos
-                if (!dia_semana || !hora_entrada || !hora_salida) {
+                if (!dia_semana) {
                     await connection.rollback();
                     return res.status(400).json({
                         error: true,
-                        message: 'Cada horario requiere dia_semana, hora_entrada y hora_salida'
+                        message: 'Cada horario requiere dia_semana'
                     });
                 }
 
@@ -6381,6 +6381,21 @@ app.post('/horarios-usuario-crear', async (req, res) => {
 
                 // Determinar si es día de descanso (cuando activo = 0)
                 const descanso = activo === 0 ? 1 : 0;
+
+                // Si es día laboral (descanso = 0), requiere horas
+                if (descanso === 0) {
+                    if (!hora_entrada || !hora_salida || hora_entrada.trim() === '' || hora_salida.trim() === '') {
+                        await connection.rollback();
+                        return res.status(400).json({
+                            error: true,
+                            message: 'Los días laborales requieren hora_entrada y hora_salida'
+                        });
+                    }
+                } else {
+                    // Si es día de descanso, las horas pueden ser vacías o nulas
+                    hora_entrada = hora_entrada && hora_entrada.trim() !== '' ? hora_entrada : null;
+                    hora_salida = hora_salida && hora_salida.trim() !== '' ? hora_salida : null;
+                }
 
                 await connection.query(
                     `INSERT INTO horarios_semanales 
