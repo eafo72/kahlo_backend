@@ -4870,6 +4870,18 @@ app.post('/checador/salida', async (req, res) => {
   }
 });
 
+app.get('/checador/movimientos', async (req, res) => {
+    try {
+
+        let query = `SELECT * FROM checador_movimientos`;
+        let movimientos = await db.pool.query(query);
+        res.json(movimientos[0]);
+
+    } catch (error) {
+        res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
+    }
+})
+
 app.get('/autorizaciones/pendientes', async (req, res) => {
   try {
 
@@ -5047,7 +5059,6 @@ app.post('/autorizaciones/rechazar', async (req, res) => {
     });
   }
 });
-
 
 app.put('/delete', async (req, res) => {
     try {
