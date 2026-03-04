@@ -4479,27 +4479,38 @@ app.post('/checador/entrada', async (req, res) => {
 
     const { qr } = req.body;
 
-    if (!qr || !qr.endsWith('-Z')) {
+    if (!qr || typeof qr !== 'string' || !qr.endsWith('-Z')) {
       return res.json({ error: true, message: 'QR inválido' });
     }
 
-    const qrBase = qr.split('-')[0];
+    // 🔹 1. Extraer ID numérico del inicio del QR
+    const match = qr.match(/^\d+/);
+    if (!match) {
+      return res.json({ error: true, message: 'QR inválido' });
+    }
 
+    const usuarioId = parseInt(match[0]);
+
+    // 🔹 2. Buscar usuario por ID
     const [usuarioRows] = await db.query(
-      `SELECT id, activo, isOperator
+      `SELECT id, activo
        FROM usuario
-       WHERE qr_base = ?
+       WHERE id = ?
        LIMIT 1`,
-      [qrBase]
+      [usuarioId]
     );
 
-    if (!usuarioRows.length || usuarioRows[0].activo !== 1) {
-      return res.json({ error: true, message: 'No autorizado' });
+    if (!usuarioRows.length) {
+      return res.json({ error: true, message: 'Usuario no encontrado' });
+    }
+
+    if (usuarioRows[0].activo !== 1) {
+      return res.json({ error: true, message: 'Usuario inactivo' });
     }
 
     const usuario = usuarioRows[0];
 
-    // Último movimiento
+    // 🔹 3. Verificar último movimiento del día
     const [ultimoRows] = await db.query(
       `SELECT tipo_evento
        FROM checador_movimientos
@@ -4532,28 +4543,26 @@ app.post('/checador/entrada', async (req, res) => {
     let horaProgramada = null;
     let eventualId = null;
 
-    if (usuario.isOperator === 1) {
+    // 🔹 4. Primero intentar horario eventual
+    const [eventualRows] = await db.query(
+      `SELECT id, hora_entrada
+       FROM horarios_eventuales
+       WHERE colaborador_id = ?
+       AND fecha = CURDATE()
+       AND utilizado = 0
+       AND activo = 1
+       LIMIT 1`,
+      [usuario.id]
+    );
 
-      const [eventualRows] = await db.query(
-        `SELECT id, hora_entrada
-         FROM horarios_eventuales
-         WHERE colaborador_id = ?
-         AND fecha = CURDATE()
-         AND utilizado = 0
-         AND activo = 1
-         LIMIT 1`,
-        [usuario.id]
-      );
-
-      if (!eventualRows.length) {
-        return res.json({ error: true, message: 'Sin permiso hoy' });
-      }
+    if (eventualRows.length) {
 
       horaProgramada = eventualRows[0].hora_entrada;
       eventualId = eventualRows[0].id;
 
     } else {
 
+      // 🔹 5. Si no hay eventual, usar semanal
       const [horarioRows] = await db.query(
         `SELECT hora_entrada
          FROM horarios_semanales
@@ -4571,7 +4580,7 @@ app.post('/checador/entrada', async (req, res) => {
       horaProgramada = horarioRows[0].hora_entrada;
     }
 
-    // REGRESO COMIDA
+    // 🔹 6. REGRESO DE COMIDA
     if (tipoEvento === 'regreso_comida') {
 
       await db.query(
@@ -4587,7 +4596,7 @@ app.post('/checador/entrada', async (req, res) => {
       return res.json({ error: false });
     }
 
-    // CALCULAR RETARDO
+    // 🔹 7. Calcular retardo
     const horaActualMin = ahora.getHours() * 60 + ahora.getMinutes();
     const [h, m] = horaProgramada.split(':');
     const horaEntradaMin = parseInt(h) * 60 + parseInt(m);
@@ -4606,10 +4615,9 @@ app.post('/checador/entrada', async (req, res) => {
     if (minutosRetardo > 30)
       clasificacion = 'sin_pase';
 
-    // 🔴 BLOQUEO >30
+    // 🔴 BLOQUEO SI >30 MIN
     if (clasificacion === 'sin_pase') {
 
-      // 1️⃣ Buscar autorización aprobada
       const [authRows] = await db.query(
         `SELECT *
          FROM autorizaciones_ingreso
@@ -4621,7 +4629,6 @@ app.post('/checador/entrada', async (req, res) => {
         [usuario.id]
       );
 
-      // 🟢 SI EXISTE AUTORIZACIÓN APROBADA → ENTRA
       if (authRows.length) {
 
         const autorizacion = authRows[0];
@@ -4655,14 +4662,10 @@ app.post('/checador/entrada', async (req, res) => {
           );
         }
 
-        return res.json({
-          error: false,
-          autorizado: true
-        });
+        return res.json({ error: false, autorizado: true });
       }
 
-      // 🔴 NO EXISTE → CREAR INTENTO + PENDIENTE
-
+      // Crear intento bloqueado
       const [movResult] = await db.query(
         `INSERT INTO checador_movimientos
          (colaborador_id, tipo, fecha_hora,
@@ -4676,7 +4679,6 @@ app.post('/checador/entrada', async (req, res) => {
 
       const movimientoId = movResult.insertId;
 
-      // Verificar que no exista pendiente
       const [pendiente] = await db.query(
         `SELECT id FROM autorizaciones_ingreso
          WHERE id_usuario = ?
@@ -4687,7 +4689,6 @@ app.post('/checador/entrada', async (req, res) => {
       );
 
       if (!pendiente.length) {
-
         await db.query(
           `INSERT INTO autorizaciones_ingreso
            (id_usuario, movimiento_id, fecha,
@@ -4707,7 +4708,6 @@ app.post('/checador/entrada', async (req, res) => {
     }
 
     // 🟢 ENTRADA NORMAL
-
     await db.query(
       `INSERT INTO checador_movimientos
        (colaborador_id, tipo, fecha_hora,
