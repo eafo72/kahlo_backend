@@ -47,7 +47,7 @@ app.get('/todos', async (req, res) => {
 
 		let query = `SELECT id, nombres, apellidos, telefono, correo, isClient, isAdmin, isOperator, isInvestor, isPartner, status 
                         FROM usuario 
-                        WHERE isClient = 1 OR isAdmin = 1 OR isOperator = 1 OR isInvestor = 1 OR isPartner = 1`;
+                        WHERE isClient = 1 OR isAdmin = 1 OR isOperator = 1 OR isInvestor = 1 OR isPartner = 1 OR isGuia = 1 OR isSpecialist = 1`;
 		let usuarios = await db.pool.query(query);
 		res.json(usuarios[0]);
 
