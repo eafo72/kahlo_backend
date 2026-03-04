@@ -4476,63 +4476,44 @@ app.get('/checkin-data', async (req, res) => {
 
 app.post('/checador/entrada', async (req, res) => {
   try {
-
     const { qr } = req.body;
+    console.log('--- 🕒 PROCESANDO ENTRADA ---', qr);
 
     if (!qr || typeof qr !== 'string' || !qr.endsWith('-Z')) {
       return res.json({ error: true, message: 'QR inválido' });
     }
 
-    // 🔹 1. Extraer ID numérico del inicio del QR
+    // 🔹 1. Extraer ID numérico
     const match = qr.match(/^\d+/);
-    if (!match) {
-      return res.json({ error: true, message: 'QR inválido' });
-    }
-
+    if (!match) return res.json({ error: true, message: 'QR formato incorrecto' });
     const usuarioId = parseInt(match[0]);
 
-    // 🔹 2. Buscar usuario por ID
-    const [usuarioRows] = await db.query(
-      `SELECT id, activo
-       FROM usuario
-       WHERE id = ?
-       LIMIT 1`,
+    // 🔹 2. Buscar usuario (USANDO db.pool.query)
+    const [usuarioRows] = await db.pool.query(
+      `SELECT id, activo FROM usuario WHERE id = ? LIMIT 1`,
       [usuarioId]
     );
 
-    if (!usuarioRows.length) {
-      return res.json({ error: true, message: 'Usuario no encontrado' });
-    }
-
-    if (usuarioRows[0].activo !== 1) {
-      return res.json({ error: true, message: 'Usuario inactivo' });
-    }
+    if (!usuarioRows.length) return res.json({ error: true, message: 'Usuario no encontrado' });
+    if (usuarioRows[0].activo !== 1) return res.json({ error: true, message: 'Usuario inactivo' });
 
     const usuario = usuarioRows[0];
 
-    // 🔹 3. Verificar último movimiento del día
-    const [ultimoRows] = await db.query(
-      `SELECT tipo_evento
-       FROM checador_movimientos
-       WHERE colaborador_id = ?
-       AND DATE(fecha_hora) = CURDATE()
-       ORDER BY fecha_hora DESC
-       LIMIT 1`,
+    // 🔹 3. Verificar último movimiento
+    const [ultimoRows] = await db.pool.query(
+      `SELECT tipo_evento FROM checador_movimientos 
+       WHERE colaborador_id = ? AND DATE(fecha_hora) = CURDATE() 
+       ORDER BY fecha_hora DESC LIMIT 1`,
       [usuario.id]
     );
 
     let tipoEvento = 'entrada_inicial';
-
     if (ultimoRows.length) {
       const ultimo = ultimoRows[0].tipo_evento;
-
       if (ultimo === 'salida_comida') {
         tipoEvento = 'regreso_comida';
       } else {
-        return res.json({
-          error: true,
-          message: 'Movimiento no permitido'
-        });
+        return res.json({ error: true, message: 'Movimiento no permitido (Ya entró)' });
       }
     }
 
@@ -4543,57 +4524,36 @@ app.post('/checador/entrada', async (req, res) => {
     let horaProgramada = null;
     let eventualId = null;
 
-    // 🔹 4. Primero intentar horario eventual
-    const [eventualRows] = await db.query(
-      `SELECT id, hora_entrada
-       FROM horarios_eventuales
-       WHERE colaborador_id = ?
-       AND fecha = CURDATE()
-       AND utilizado = 0
-       AND activo = 1
-       LIMIT 1`,
+    // 🔹 4. Horario Eventual
+    const [eventualRows] = await db.pool.query(
+      `SELECT id, hora_entrada FROM horarios_eventuales 
+       WHERE colaborador_id = ? AND fecha = CURDATE() AND utilizado = 0 AND activo = 1 LIMIT 1`,
       [usuario.id]
     );
 
     if (eventualRows.length) {
-
       horaProgramada = eventualRows[0].hora_entrada;
       eventualId = eventualRows[0].id;
-
     } else {
-
-      // 🔹 5. Si no hay eventual, usar semanal
-      const [horarioRows] = await db.query(
-        `SELECT hora_entrada
-         FROM horarios_semanales
-         WHERE colaborador_id = ?
-         AND dia_semana = ?
-         AND activo = 1
-         LIMIT 1`,
+      // 🔹 5. Horario Semanal
+      const [horarioRows] = await db.pool.query(
+        `SELECT hora_entrada FROM horarios_semanales 
+         WHERE id_usuario = ? AND dia_semana = ? AND activo = 1 LIMIT 1`,
         [usuario.id, diaSemana]
       );
 
-      if (!horarioRows.length) {
-        return res.json({ error: true, message: 'No trabaja hoy' });
-      }
-
+      if (!horarioRows.length) return res.json({ error: true, message: 'No tiene horario asignado hoy' });
       horaProgramada = horarioRows[0].hora_entrada;
     }
 
-    // 🔹 6. REGRESO DE COMIDA
+    // 🔹 6. Regreso de comida (No calcula retardo)
     if (tipoEvento === 'regreso_comida') {
-
-      await db.query(
-        `INSERT INTO checador_movimientos
-         (colaborador_id, tipo, fecha_hora,
-          minutos_retardo, clasificacion,
-          autorizado, tipo_evento)
-         VALUES (?, 'entrada', NOW(),
-          0, 'normal', 0, 'regreso_comida')`,
+      await db.pool.query(
+        `INSERT INTO checador_movimientos (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento) 
+         VALUES (?, 'entrada', NOW(), 0, 'normal', 0, 'regreso_comida')`,
         [usuario.id]
       );
-
-      return res.json({ error: false });
+      return res.json({ error: false, message: 'Bienvenido (Regreso de comida)' });
     }
 
     // 🔹 7. Calcular retardo
@@ -4605,133 +4565,63 @@ app.post('/checador/entrada', async (req, res) => {
     if (minutosRetardo < 0) minutosRetardo = 0;
 
     let clasificacion = 'normal';
+    if (minutosRetardo > 0 && minutosRetardo <= 15) clasificacion = 'retardo_menor';
+    else if (minutosRetardo > 15 && minutosRetardo <= 30) clasificacion = 'retardo_mayor';
+    else if (minutosRetardo > 30) clasificacion = 'sin_pase';
 
-    if (minutosRetardo > 0 && minutosRetardo <= 15)
-      clasificacion = 'retardo_menor';
-
-    if (minutosRetardo > 15 && minutosRetardo <= 30)
-      clasificacion = 'retardo_mayor';
-
-    if (minutosRetardo > 30)
-      clasificacion = 'sin_pase';
-
-    // 🔴 BLOQUEO SI >30 MIN
+    // 🔴 8. Bloqueo si > 30 min
     if (clasificacion === 'sin_pase') {
-
-      const [authRows] = await db.query(
-        `SELECT *
-         FROM autorizaciones_ingreso
-         WHERE id_usuario = ?
-         AND fecha = CURDATE()
-         AND estado = 'aprobado'
-         AND usada = 0
-         LIMIT 1`,
+      const [authRows] = await db.pool.query(
+        `SELECT id FROM autorizaciones_ingreso WHERE id_usuario = ? AND fecha = CURDATE() AND estado = 'aprobado' AND usada = 0 LIMIT 1`,
         [usuario.id]
       );
 
       if (authRows.length) {
-
-        const autorizacion = authRows[0];
-
-        const [movResult] = await db.query(
-          `INSERT INTO checador_movimientos
-           (colaborador_id, tipo, fecha_hora,
-            minutos_retardo, clasificacion,
-            autorizado, tipo_evento)
-           VALUES (?, 'entrada', NOW(),
-            ?, 'sin_pase',
-            1, 'entrada_autorizada')`,
+        const authId = authRows[0].id;
+        await db.pool.query(
+          `INSERT INTO checador_movimientos (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento) 
+           VALUES (?, 'entrada', NOW(), ?, 'sin_pase', 1, 'entrada_autorizada')`,
           [usuario.id, minutosRetardo]
         );
-
-        await db.query(
-          `UPDATE autorizaciones_ingreso
-           SET estado = 'usado',
-               usada = 1,
-               updated_at = NOW()
-           WHERE id = ?`,
-          [autorizacion.id]
-        );
-
-        if (eventualId) {
-          await db.query(
-            `UPDATE horarios_eventuales
-             SET utilizado = 1
-             WHERE id = ?`,
-            [eventualId]
-          );
-        }
-
-        return res.json({ error: false, autorizado: true });
+        await db.pool.query(`UPDATE autorizaciones_ingreso SET estado = 'usado', usada = 1, updated_at = NOW() WHERE id = ?`, [authId]);
+        if (eventualId) await db.pool.query(`UPDATE horarios_eventuales SET utilizado = 1 WHERE id = ?`, [eventualId]);
+        return res.json({ error: false, autorizado: true, message: 'Entrada autorizada con retardo' });
       }
 
-      // Crear intento bloqueado
-      const [movResult] = await db.query(
-        `INSERT INTO checador_movimientos
-         (colaborador_id, tipo, fecha_hora,
-          minutos_retardo, clasificacion,
-          autorizado, tipo_evento)
-         VALUES (?, 'entrada', NOW(),
-          ?, 'sin_pase',
-          0, 'intento_bloqueado')`,
+      // Crear intento bloqueado y solicitud
+      const [movResult] = await db.pool.query(
+        `INSERT INTO checador_movimientos (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento) 
+         VALUES (?, 'entrada', NOW(), ?, 'sin_pase', 0, 'intento_bloqueado')`,
         [usuario.id, minutosRetardo]
       );
-
-      const movimientoId = movResult.insertId;
-
-      const [pendiente] = await db.query(
-        `SELECT id FROM autorizaciones_ingreso
-         WHERE id_usuario = ?
-         AND fecha = CURDATE()
-         AND estado = 'pendiente'
-         LIMIT 1`,
-        [usuario.id]
-      );
-
+      
+      const [pendiente] = await db.pool.query(`SELECT id FROM autorizaciones_ingreso WHERE id_usuario = ? AND fecha = CURDATE() AND estado = 'pendiente' LIMIT 1`, [usuario.id]);
+      
       if (!pendiente.length) {
-        await db.query(
-          `INSERT INTO autorizaciones_ingreso
-           (id_usuario, movimiento_id, fecha,
-            hora_solicitud, estado, usada,
-            created_at, updated_at)
-           VALUES (?, ?, CURDATE(),
-            CURTIME(), 'pendiente', 0,
-            NOW(), NOW())`,
-          [usuario.id, movimientoId]
+        await db.pool.query(
+          `INSERT INTO autorizaciones_ingreso (id_usuario, movimiento_id, fecha, hora_solicitud, estado, usada, created_at, updated_at) 
+           VALUES (?, ?, CURDATE(), CURTIME(), 'pendiente', 0, NOW(), NOW())`,
+          [usuario.id, movResult.insertId]
         );
       }
-
-      return res.json({
-        error: true,
-        message: 'Requiere autorización'
-      });
+      return res.json({ error: true, message: 'Requiere autorización (Excedió 30 min)' });
     }
 
-    // 🟢 ENTRADA NORMAL
-    await db.query(
-      `INSERT INTO checador_movimientos
-       (colaborador_id, tipo, fecha_hora,
-        minutos_retardo, clasificacion,
-        autorizado, tipo_evento)
-       VALUES (?, 'entrada', NOW(),
-        ?, ?, 0, 'entrada_inicial')`,
+    // 🟢 9. Entrada Normal
+    await db.pool.query(
+      `INSERT INTO checador_movimientos (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento) 
+       VALUES (?, 'entrada', NOW(), ?, ?, 0, 'entrada_inicial')`,
       [usuario.id, minutosRetardo, clasificacion]
     );
 
-    if (eventualId) {
-      await db.query(
-        `UPDATE horarios_eventuales
-         SET utilizado = 1
-         WHERE id = ?`,
-        [eventualId]
-      );
-    }
+    if (eventualId) await db.pool.query(`UPDATE horarios_eventuales SET utilizado = 1 WHERE id = ?`, [eventualId]);
 
-    return res.json({ error: false });
+    console.log('✅ Registro exitoso para ID:', usuario.id);
+    return res.json({ error: false, message: 'Bienvenido' });
 
   } catch (error) {
-    console.error(error);
-    return res.json({ error: true, message: 'Error interno' });
+    console.error('🔥 ERROR CRÍTICO:', error);
+    return res.json({ error: true, message: 'Error interno', detalle: error.message });
   }
 });
 
