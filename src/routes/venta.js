@@ -4477,64 +4477,73 @@ app.get('/checkin-data', async (req, res) => {
 app.post('/checador/entrada', async (req, res) => {
     try {
         const { qr } = req.body;
-        console.log('--- 🕒 PASO 1: QR RECIBIDO ---', qr);
+        console.log('--- 🕒 PROCESANDO ENTRADA (SOLO SEMANAL) ---', qr);
 
-        // 1. Validar formato básico
-        if (!qr || typeof qr !== 'string') {
-            return res.json({ error: true, message: 'QR no recibido' });
-        }
-
-        // Extraer ID (de 34TUBA-1-Z saca 34)
+        // 1. Validar formato de QR (34TUBA-1-Z)
+        if (!qr || typeof qr !== 'string') return res.json({ error: true, message: 'QR inválido' });
+        
         const match = qr.match(/^(\d+)/);
-        if (!match) {
-            return res.json({ error: true, message: 'Formato de ID no encontrado en QR' });
-        }
+        if (!match) return res.json({ error: true, message: 'ID no encontrado' });
         const usuarioId = parseInt(match[1]);
 
-        // 2. Buscar usuario (Usando status y db.pool.query)
-        console.log('--- 🕒 PASO 2: BUSCANDO USUARIO ---', usuarioId);
+        // 2. Buscar usuario (Columna 'status' según tu checkin funcional)
         const [usuarioRows] = await db.pool.query(
             `SELECT id, nombres, status FROM usuario WHERE id = ? LIMIT 1`,
             [usuarioId]
         );
 
-        if (usuarioRows.length === 0) {
-            return res.json({ error: true, message: 'Usuario no existe en la base de datos' });
-        }
-
-        if (usuarioRows[0].status !== 1) {
-            return res.json({ error: true, message: 'Usuario encontrado pero está INACTIVO' });
-        }
+        if (!usuarioRows.length) return res.json({ error: true, message: 'Usuario no existe' });
+        if (usuarioRows[0].status !== 1) return res.json({ error: true, message: 'Usuario inactivo' });
 
         const usuario = usuarioRows[0];
-        console.log('--- 🕒 PASO 3: USUARIO OK ---', usuario.nombres);
 
-        // 3. Insertar movimiento simple (Prueba de fuego)
-        // Usamos CONVERT_TZ para asegurar la hora de México
-        const queryInsert = `
-            INSERT INTO checador_movimientos 
+        // 3. Obtener Horario Semanal
+        const ahora = new Date();
+        let diaSemana = ahora.getDay(); 
+        if (diaSemana === 0) diaSemana = 7; // Ajuste Domingo = 7
+
+        const [horarioRows] = await db.pool.query(
+            `SELECT hora_entrada FROM horarios_semanales 
+             WHERE id_usuario = ? AND dia_semana = ? AND activo = 1 LIMIT 1`,
+            [usuario.id, diaSemana]
+        );
+
+        if (!horarioRows.length) {
+            return res.json({ error: true, message: 'No tienes horario asignado para hoy' });
+        }
+
+        const horaProgramada = horarioRows[0].hora_entrada;
+
+        // 4. Calcular Retardo Simple
+        const horaActualMin = ahora.getHours() * 60 + ahora.getMinutes();
+        const [h, m] = horaProgramada.split(':');
+        const horaEntradaMin = parseInt(h) * 60 + parseInt(m);
+        
+        let minutosRetardo = Math.max(0, horaActualMin - horaEntradaMin);
+        let clasificacion = minutosRetardo > 0 ? 'retardo' : 'normal';
+
+        // 5. INSERTAR EN MOVIMIENTOS
+        // Nota: Asegúrate que en 'checador_movimientos' la columna sea 'colaborador_id' o 'id_usuario'
+        // Si el error de antes persiste, cambia 'colaborador_id' por 'id_usuario' abajo:
+        await db.pool.query(
+            `INSERT INTO checador_movimientos 
             (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento) 
-            VALUES (?, 'entrada', CONVERT_TZ(NOW(), '+00:00', '-06:00'), 0, 'normal', 0, 'test_simple')
-        `;
-
-        await db.pool.query(queryInsert, [usuario.id]);
-
-        console.log('--- 🕒 PASO 4: INSERCIÓN EXITOSA ---');
+            VALUES (?, 'entrada', CONVERT_TZ(NOW(), '+00:00', '-06:00'), ?, ?, 0, 'entrada_inicial')`,
+            [usuario.id, minutosRetardo, clasificacion]
+        );
 
         return res.json({ 
             error: false, 
-            message: `Hola ${usuario.nombres}, entrada registrada con éxito (Test)` 
+            message: `Bienvenido ${usuario.nombres}`,
+            retardo: minutosRetardo 
         });
 
     } catch (error) {
-        console.error('🔥 ERROR EN EL PASO A PASO:', error);
-        return res.json({ 
-            error: true, 
-            message: 'Error de servidor', 
-            detalle: error.message 
-        });
+        console.error('❌ ERROR EN ENTRADA:', error);
+        return res.json({ error: true, message: 'Error interno', detalle: error.message });
     }
 });
+
 
 app.post('/checador/salida', async (req, res) => {
   try {
