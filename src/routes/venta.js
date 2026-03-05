@@ -5126,6 +5126,7 @@ app.post('/autorizaciones/perdonar', async (req, res) => {
     }
 });
 
+//lista de autorizaciones asistencia
 app.get('/autorizaciones/asistencia', async (req, res) => {
     try {
 
@@ -5144,6 +5145,7 @@ app.get('/autorizaciones/asistencia', async (req, res) => {
     }
 });
 
+//lista de autorizaciones ingreso
 app.get('/autorizaciones/ingreso', async (req, res) => {
     try {
 

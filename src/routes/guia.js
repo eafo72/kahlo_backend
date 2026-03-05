@@ -95,12 +95,7 @@ app.post('/crear', imageController.upload, async (req, res) => {
     if (!area) errors.push({ msg: "El campo area debe de contener un valor" });
     if (!nss) errors.push({ msg: "El campo nss debe de contener un valor" });
 
-    if (!hora_entrada) errors.push({ msg: "El campo hora_entrada debe de contener un valor" });
-    if (!hora_salida) errors.push({ msg: "El campo hora_salida debe de contener un valor" });
-    if (!hora_salida_comer) errors.push({ msg: "El campo hora_salida_comer debe de contener un valor" });
-    if (!hora_regreso_comer) errors.push({ msg: "El campo hora_regreso_comer debe de contener un valor" });
-
-
+    
     if (!telefono) telefono = null;
 
     if (errors.length >= 1) {
@@ -261,10 +256,7 @@ app.put('/set', imageController.upload, async (req, res) => {
     if (!area) errors.push({ msg: "El campo area debe de contener un valor" });
     if (!nss) errors.push({ msg: "El campo nss debe de contener un valor" });
 
-    if (!hora_entrada) errors.push({ msg: "El campo hora_entrada debe de contener un valor" });
-    if (!hora_salida) errors.push({ msg: "El campo hora_salida debe de contener un valor" });
-    if (!hora_salida_comer) errors.push({ msg: "El campo hora_salida_comer debe de contener un valor" });
-    if (!hora_regreso_comer) errors.push({ msg: "El campo hora_regreso_comer debe de contener un valor" });
+    
 
 
     if (!telefono) telefono = null;
