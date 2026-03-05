@@ -5126,6 +5126,42 @@ app.post('/autorizaciones/perdonar', async (req, res) => {
     }
 });
 
+app.get('/autorizaciones/asistencia', async (req, res) => {
+    try {
+
+        let query = `SELECT 
+        autorizaciones_asistencia.*, 
+        CONCAT(u.nombres, ' ', u.apellidos) AS nombre_colaborador,
+        CONCAT(a.nombres, ' ', a.apellidos) AS nombre_administrador
+        FROM autorizaciones_asistencia 
+        INNER JOIN usuario u ON autorizaciones_asistencia.id_usuario_colaborador = u.id
+        LEFT  JOIN usuario a ON autorizaciones_asistencia.id_usuario_admin = a.id`;
+        let autorizaciones = await db.pool.query(query);
+        res.json(autorizaciones[0]);
+
+    } catch (error) {
+        res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
+    }
+});
+
+app.get('/autorizaciones/ingreso', async (req, res) => {
+    try {
+
+        let query = `SELECT 
+        autorizaciones_ingreso.*, 
+        CONCAT(u.nombres, ' ', u.apellidos) AS nombre_colaborador
+        FROM autorizaciones_ingreso 
+        INNER JOIN usuario u ON autorizaciones_ingreso.id_usuario = u.id`;
+        let autorizaciones = await db.pool.query(query);
+        res.json(autorizaciones[0]);
+
+    } catch (error) {
+        res.status(500).json({ msg: 'Hubo un error obteniendo los datos', error: true, details: error })
+    }
+});
+
+
+
 app.put('/delete', async (req, res) => {
     try {
         let ventaId = req.body.id;
