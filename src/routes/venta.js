@@ -4662,6 +4662,22 @@ app.post('/checador/entrada', async (req, res) => {
 
             } else {
 
+                // B. Si NO está aprobada, revisamos si YA EXISTE una solicitud pendiente
+                const [pendiente] = await db.pool.query(
+                    `SELECT id FROM autorizaciones_ingreso 
+                     WHERE id_usuario = ? AND fecha = ? AND estado = 'pendiente' LIMIT 1`,
+                    [usuario.id, fechaHoy]
+                );
+
+                if (pendiente.length) {
+                    // Si ya hay una pendiente, NO insertamos nada nuevo
+                    console.log("⏳ Usuario re-intentando, pero ya tiene solicitud pendiente");
+                    return res.json({
+                        error: true,
+                        message: 'Ya tienes una solicitud pendiente. Por favor, espera aprobación.'
+                    });
+                }
+
                 const [movResult] = await db.pool.query(
                     `INSERT INTO checador_movimientos
                     (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
@@ -4936,182 +4952,178 @@ app.get('/checador/movimientos', async (req, res) => {
     }
 })
 
+// ==========================================
+// ENDPOINTS DE ADMINISTRACIÓN DE ASISTENCIA
+// ==========================================
+
+// 1. OBTENER SOLICITUDES PENDIENTES DEL DÍA
 app.get('/autorizaciones/pendientes', async (req, res) => {
-  try {
+    try {
+        console.log("📋 CONSULTANDO AUTORIZACIONES PENDIENTES");
 
-    console.log("📋 CONSULTANDO AUTORIZACIONES PENDIENTES");
+        const ahoraCDMX = new Date(
+            new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" })
+        );
 
-    const ahoraCDMX = new Date(
-      new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" })
-    );
+        const fechaHoy = ahoraCDMX.toLocaleString("sv-SE").split(' ')[0];
 
-    const fechaHoy = ahoraCDMX
-      .toLocaleString("sv-SE")
-      .split(' ')[0];
+        console.log("📅 Fecha CDMX usada:", fechaHoy);
 
-    console.log("📅 Fecha CDMX usada:", fechaHoy);
+        const [rows] = await db.pool.query(
+            `SELECT 
+                ai.id,
+                ai.id_usuario,
+                ai.fecha,
+                ai.hora_solicitud,
+                ai.motivo,
+                u.nombres,
+                u.apellido
+             FROM autorizaciones_ingreso ai
+             INNER JOIN usuario u ON u.id = ai.id_usuario
+             WHERE ai.estado = 'pendiente'
+             AND ai.fecha = ?
+             ORDER BY ai.hora_solicitud ASC`,
+            [fechaHoy]
+        );
 
-    const [rows] = await db.pool.query(
-      `SELECT 
-          ai.id,
-          ai.id_usuario,
-          ai.fecha,
-          ai.hora_solicitud,
-          ai.motivo,
-          u.nombre,
-          u.apellido
-       FROM autorizaciones_ingreso ai
-       INNER JOIN usuario u ON u.id = ai.id_usuario
-       WHERE ai.estado = 'pendiente'
-       AND ai.fecha = ?
-       ORDER BY ai.hora_solicitud ASC`,
-      [fechaHoy]
-    );
+        return res.json({
+            error: false,
+            data: rows
+        });
 
-    return res.json({
-      error: false,
-      data: rows
-    });
-
-  } catch (error) {
-    console.error("🔥 ERROR EN PENDIENTES:", error);
-    return res.json({
-      error: true,
-      message: 'Error al obtener pendientes'
-    });
-  }
+    } catch (error) {
+        console.error("🔥 ERROR EN PENDIENTES:", error);
+        return res.json({
+            error: true,
+            message: 'Error al obtener pendientes'
+        });
+    }
 });
 
+// 2. APROBAR AUTORIZACIÓN DE INGRESO
 app.post('/autorizaciones/aprobar', async (req, res) => {
-  try {
+    try {
+        console.log("✅ APROBANDO AUTORIZACIÓN");
+        const { autorizacion_id, admin_id } = req.body;
 
-    console.log("✅ APROBANDO AUTORIZACIÓN");
-    console.log("Body:", req.body);
+        if (!autorizacion_id || !admin_id) {
+            return res.json({ error: true, message: 'Datos incompletos' });
+        }
 
-    const { autorizacion_id, admin_id } = req.body;
+        const ahoraCDMX = new Date(
+            new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" })
+        );
 
-    if (!autorizacion_id || !admin_id) {
-      return res.json({
-        error: true,
-        message: 'Datos incompletos'
-      });
+        const fechaHora = ahoraCDMX.toLocaleString("sv-SE").replace('T', ' ');
+        const horaSolo = fechaHora.split(' ')[1];
+
+        const [rows] = await db.pool.query(
+            `SELECT * FROM autorizaciones_ingreso WHERE id = ? AND estado = 'pendiente' LIMIT 1`,
+            [autorizacion_id]
+        );
+
+        if (!rows.length) {
+            return res.json({ error: true, message: 'Autorización no válida o ya procesada' });
+        }
+
+        await db.pool.query(
+            `UPDATE autorizaciones_ingreso
+             SET estado = 'aprobado',
+                 autorizado_por = ?,
+                 hora_autorizacion = ?,
+                 updated_at = ?
+             WHERE id = ?`,
+            [admin_id, horaSolo, fechaHora, autorizacion_id]
+        );
+
+        console.log("✔ Autorización aprobada correctamente");
+        return res.json({ error: false, message: 'Autorización aprobada' });
+
+    } catch (error) {
+        console.error("🔥 ERROR EN APROBAR:", error);
+        return res.json({ error: true, message: 'Error al aprobar' });
     }
-
-    const ahoraCDMX = new Date(
-      new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" })
-    );
-
-    const fechaHora = ahoraCDMX
-      .toLocaleString("sv-SE")
-      .replace('T', ' ');
-
-    const horaSolo = fechaHora.split(' ')[1];
-
-    const [rows] = await db.pool.query(
-      `SELECT *
-       FROM autorizaciones_ingreso
-       WHERE id = ?
-       AND estado = 'pendiente'
-       LIMIT 1`,
-      [autorizacion_id]
-    );
-
-    if (!rows.length) {
-      return res.json({
-        error: true,
-        message: 'Autorización no válida'
-      });
-    }
-
-    await db.pool.query(
-      `UPDATE autorizaciones_ingreso
-       SET estado = 'aprobado',
-           autorizado_por = ?,
-           hora_autorizacion = ?,
-           updated_at = ?
-       WHERE id = ?`,
-      [admin_id, horaSolo, fechaHora, autorizacion_id]
-    );
-
-    console.log("✔ Autorización aprobada correctamente");
-
-    return res.json({
-      error: false,
-      message: 'Autorización aprobada'
-    });
-
-  } catch (error) {
-    console.error("🔥 ERROR EN APROBAR:", error);
-    return res.json({
-      error: true,
-      message: 'Error al aprobar'
-    });
-  }
 });
 
+// 3. RECHAZAR AUTORIZACIÓN DE INGRESO
 app.post('/autorizaciones/rechazar', async (req, res) => {
-  try {
+    try {
+        console.log("❌ RECHAZANDO AUTORIZACIÓN");
+        const { autorizacion_id, admin_id, motivo } = req.body;
 
-    console.log("❌ RECHAZANDO AUTORIZACIÓN");
-    console.log("Body:", req.body);
+        if (!autorizacion_id || !admin_id) {
+            return res.json({ error: true, message: 'Datos incompletos' });
+        }
 
-    const { autorizacion_id, admin_id, motivo } = req.body;
+        const ahoraCDMX = new Date(
+            new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" })
+        );
 
-    if (!autorizacion_id || !admin_id) {
-      return res.json({
-        error: true,
-        message: 'Datos incompletos'
-      });
+        const fechaHora = ahoraCDMX.toLocaleString("sv-SE").replace('T', ' ');
+
+        const [rows] = await db.pool.query(
+            `SELECT * FROM autorizaciones_ingreso WHERE id = ? AND estado = 'pendiente' LIMIT 1`,
+            [autorizacion_id]
+        );
+
+        if (!rows.length) {
+            return res.json({ error: true, message: 'Autorización no válida' });
+        }
+
+        await db.pool.query(
+            `UPDATE autorizaciones_ingreso
+             SET estado = 'rechazado',
+                 autorizado_por = ?,
+                 motivo = ?,
+                 updated_at = ?
+             WHERE id = ?`,
+            [admin_id, motivo || 'Sin motivo especificado', fechaHora, autorizacion_id]
+        );
+
+        console.log("✔ Autorización rechazada correctamente");
+        return res.json({ error: false, message: 'Autorización rechazada' });
+
+    } catch (error) {
+        console.error("🔥 ERROR EN RECHAZAR:", error);
+        return res.json({ error: true, message: 'Error al rechazar' });
     }
+});
 
-    const ahoraCDMX = new Date(
-      new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" })
-    );
+// 4. PERDONAR RETARDO (ASISTENCIA / NÓMINA)
+app.post('/autorizaciones/perdonar', async (req, res) => {
+    try {
+        console.log("💰 PERDONANDO RETARDO EN ASISTENCIA");
+        const { 
+            id_usuario_colaborador, 
+            id_usuario_admin, 
+            fecha, 
+            minutos_retraso, 
+            motivo, 
+            tipo_autorizacion 
+        } = req.body;
 
-    const fechaHora = ahoraCDMX
-      .toLocaleString("sv-SE")
-      .replace('T', ' ');
+        // Usamos la hora real de CDMX para el registro de auditoría
+        const ahoraCDMX = new Date(
+            new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" })
+        );
+        const fechaHoraRegistro = ahoraCDMX.toLocaleString("sv-SE").replace('T', ' ');
 
-    const [rows] = await db.pool.query(
-      `SELECT *
-       FROM autorizaciones_ingreso
-       WHERE id = ?
-       AND estado = 'pendiente'
-       LIMIT 1`,
-      [autorizacion_id]
-    );
+        await db.pool.query(
+            `INSERT INTO autorizaciones_asistencia 
+            (id_usuario_colaborador, id_usuario_admin, fecha, minutos_retraso, motivo, tipo_autorizacion, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [id_usuario_colaborador, id_usuario_admin, fecha, minutos_retraso, motivo, tipo_autorizacion, fechaHoraRegistro]
+        );
 
-    if (!rows.length) {
-      return res.json({
-        error: true,
-        message: 'Autorización no válida'
-      });
+        return res.json({ 
+            error: false, 
+            message: 'Retardo perdonado correctamente en el sistema de asistencia.' 
+        });
+
+    } catch (error) {
+        console.error('🔥 ERROR EN PERDONAR RETARDO:', error);
+        return res.json({ error: true, message: error.message });
     }
-
-    await db.pool.query(
-      `UPDATE autorizaciones_ingreso
-       SET estado = 'rechazado',
-           autorizado_por = ?,
-           motivo = ?,
-           updated_at = ?
-       WHERE id = ?`,
-      [admin_id, motivo || null, fechaHora, autorizacion_id]
-    );
-
-    console.log("✔ Autorización rechazada correctamente");
-
-    return res.json({
-      error: false,
-      message: 'Autorización rechazada'
-    });
-
-  } catch (error) {
-    console.error("🔥 ERROR EN RECHAZAR:", error);
-    return res.json({
-      error: true,
-      message: 'Error al rechazar'
-    });
-  }
 });
 
 app.put('/delete', async (req, res) => {
