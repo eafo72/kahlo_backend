@@ -4476,10 +4476,8 @@ app.get('/checkin-data', async (req, res) => {
 
 app.post('/checador/entrada', async (req, res) => {
     try {
-
         console.log("====================================");
         console.log("📥 NUEVA SOLICITUD DE ENTRADA");
-        console.log("Body:", req.body);
 
         const { qr } = req.body;
 
@@ -4498,9 +4496,9 @@ app.post('/checador/entrada', async (req, res) => {
         const usuarioId = parseInt(match[0]);
         console.log("👤 Usuario ID detectado:", usuarioId);
 
-        // 2️⃣ BUSCAR USUARIO
+        // 2️⃣ BUSCAR USUARIO (Traemos isEventual para saber qué camino tomar)
         const [usuarioRows] = await db.pool.query(
-            `SELECT id, status FROM usuario WHERE id = ? LIMIT 1`,
+            `SELECT id, status, isEventual FROM usuario WHERE id = ? LIMIT 1`,
             [usuarioId]
         );
 
@@ -4517,75 +4515,68 @@ app.post('/checador/entrada', async (req, res) => {
         const usuario = usuarioRows[0];
 
         // 3️⃣ OBTENER HORA CDMX REAL
-       const ahoraUTC = new Date();
+        const ahoraUTC = new Date();
+        const ahoraCDMX = new Date(ahoraUTC.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
+        const fechaMysql = ahoraCDMX.toLocaleString("sv-SE").replace('T', ' ');
+        const fechaHoy = fechaMysql.split(' ')[0];
 
-         const ahoraCDMX = new Date(
-          ahoraUTC.toLocaleString("en-US", { timeZone: "America/Mexico_City" })
-           );
-
-          const fechaMysql = ahoraCDMX.toLocaleString("sv-SE").replace('T', ' ');
-
-          const fechaHoy = fechaMysql.split(' ')[0];
-
-        console.log("🕒 Hora UTC:", ahoraUTC);
-        console.log("🕒 Hora CDMX:", ahoraCDMX);
-        console.log("🕒 Fecha MySQL a guardar:", fechaMysql);
-
-        // 4️⃣ VERIFICAR ÚLTIMO MOVIMIENTO
-      const [ultimoRows] = await db.pool.query(
-    `SELECT tipo_evento 
-     FROM checador_movimientos 
-     WHERE colaborador_id = ? 
-     AND DATE(fecha_hora) = ?
-     ORDER BY fecha_hora DESC 
-     LIMIT 1`,
-    [usuario.id, fechaHoy]
-         );
+        // 4️⃣ VERIFICAR ÚLTIMO MOVIMIENTO (Aplica para ambos)
+        const [ultimoRows] = await db.pool.query(
+            `SELECT tipo_evento FROM checador_movimientos 
+             WHERE colaborador_id = ? AND DATE(fecha_hora) = ?
+             ORDER BY fecha_hora DESC LIMIT 1`,
+            [usuario.id, fechaHoy]
+        );
 
         let tipoEvento = 'entrada_inicial';
 
         if (ultimoRows.length) {
             const ultimo = ultimoRows[0].tipo_evento;
-            console.log("🔎 Último evento:", ultimo);
-
             if (ultimo === 'salida_comida') {
                 tipoEvento = 'regreso_comida';
             } else {
-                return res.json({
-                    error: true,
-                    message: 'Ya tienes una entrada registrada hoy'
-                });
+                return res.json({ error: true, message: 'Ya tienes una entrada registrada hoy' });
             }
         }
 
-        // 5️⃣ OBTENER HORARIO
-        let diaSemana = ahoraCDMX.getDay();
-        if (diaSemana === 0) diaSemana = 7;
+        // 5️⃣ OBTENER HORARIO (Aquí separamos los caminos)
+        let horaProgramada = null;
 
-        const [horarioRows] = await db.pool.query(
-            `SELECT hora_entrada 
-             FROM horarios_semanales 
-             WHERE id_usuario = ? 
-             AND dia_semana = ? 
-             AND activo = 1 
-             LIMIT 1`,
-            [usuario.id, diaSemana]
-        );
+        if (usuario.isEventual === 1) {
+            // --- FLUJO EVENTUAL (Cita única) ---
+            console.log("👷 Buscando en horarios_eventuales...");
+            const [eventualRows] = await db.pool.query(
+                `SELECT hora_entrada FROM horarios_eventuales 
+                 WHERE id_usuario = ? AND fecha = ? AND activo = 1 LIMIT 1`,
+                [usuario.id, fechaHoy]
+            );
 
-        if (!horarioRows.length) {
-            console.log("❌ No tiene horario asignado");
-            return res.json({
-                error: true,
-                message: 'No tienes horario asignado para hoy'
-            });
+            if (!eventualRows.length) {
+                console.log("❌ Eventual sin cita para hoy");
+                return res.json({ error: true, message: 'No tienes una visita programada para hoy' });
+            }
+            horaProgramada = eventualRows[0].hora_entrada;
+
+        } else {
+            // --- FLUJO NORMAL (Horario semanal) ---
+            let diaSemana = ahoraCDMX.getDay();
+            if (diaSemana === 0) diaSemana = 7;
+
+            const [horarioRows] = await db.pool.query(
+                `SELECT hora_entrada FROM horarios_semanales 
+                 WHERE id_usuario = ? AND dia_semana = ? AND activo = 1 LIMIT 1`,
+                [usuario.id, diaSemana]
+            );
+
+            if (!horarioRows.length) {
+                console.log("❌ Normal sin horario asignado");
+                return res.json({ error: true, message: 'No tienes horario asignado para hoy' });
+            }
+            horaProgramada = horarioRows[0].hora_entrada;
         }
 
-        const horaProgramada = horarioRows[0].hora_entrada;
-        console.log("📅 Hora programada:", horaProgramada);
-
-        // 6️⃣ CALCULAR RETARDO
+        // 6️⃣ CALCULAR RETARDO (Común para ambos una vez que tenemos horaProgramada)
         const horaActualMin = ahoraCDMX.getHours() * 60 + ahoraCDMX.getMinutes();
-
         const [h, m] = horaProgramada.split(':');
         const horaEntradaMin = parseInt(h) * 60 + parseInt(m);
 
@@ -4593,7 +4584,6 @@ app.post('/checador/entrada', async (req, res) => {
         if (minutosRetardo < 0) minutosRetardo = 0;
 
         let clasificacion = 'normal';
-
         if (minutosRetardo > 0 && minutosRetardo <= 15) {
             clasificacion = 'retardo_menor';
         } else if (minutosRetardo > 15 && minutosRetardo <= 30) {
@@ -4602,67 +4592,38 @@ app.post('/checador/entrada', async (req, res) => {
             clasificacion = 'sin_pase';
         }
 
-        console.log("⏱ Minutos retardo:", minutosRetardo);
-        console.log("📊 Clasificación:", clasificacion);
-
         // 7️⃣ REGRESO DE COMIDA
         if (tipoEvento === 'regreso_comida') {
-
             await db.pool.query(
                 `INSERT INTO checador_movimientos
                 (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
                 VALUES (?, 'entrada', ?, 0, 'normal', 0, 'regreso_comida')`,
                 [usuario.id, fechaMysql]
             );
-
-            console.log("✅ Regreso comida guardado");
-
-            return res.json({
-                error: false,
-                message: 'Regreso de comida exitoso'
-            });
+            return res.json({ error: false, message: 'Regreso de comida exitoso' });
         }
 
         // 8️⃣ BLOQUEO MAYOR A 30 MIN
         if (clasificacion === 'sin_pase') {
-
-           const [authRows] = await db.pool.query(
-    `SELECT id 
-     FROM autorizaciones_ingreso
-     WHERE id_usuario = ?
-     AND fecha = ?
-     AND estado = 'aprobado'
-     AND usada = 0
-     LIMIT 1`,
-    [usuario.id, fechaHoy]
-);
+            const [authRows] = await db.pool.query(
+                `SELECT id FROM autorizaciones_ingreso
+                 WHERE id_usuario = ? AND fecha = ? AND estado = 'aprobado' AND usada = 0 LIMIT 1`,
+                [usuario.id, fechaHoy]
+            );
 
             if (authRows.length) {
-
                 await db.pool.query(
                     `INSERT INTO checador_movimientos
                     (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
                     VALUES (?, 'entrada', ?, ?, 'sin_pase', 1, 'entrada_autorizada')`,
                     [usuario.id, fechaMysql, minutosRetardo]
                 );
-
                 await db.pool.query(
-    `UPDATE autorizaciones_ingreso 
-     SET usada = 1, updated_at = ?
-     WHERE id = ?`,
-    [fechaMysql, authRows[0].id]
-);
-
-                console.log("✅ Entrada autorizada");
-
-                return res.json({
-                    error: false,
-                    message: 'Bienvenido (Autorizado)'
-                });
-
+                    `UPDATE autorizaciones_ingreso SET usada = 1, updated_at = ? WHERE id = ?`,
+                    [fechaMysql, authRows[0].id]
+                );
+                return res.json({ error: false, message: 'Bienvenido (Autorizado)' });
             } else {
-
-                // B. Si NO está aprobada, revisamos si YA EXISTE una solicitud pendiente
                 const [pendiente] = await db.pool.query(
                     `SELECT id FROM autorizaciones_ingreso 
                      WHERE id_usuario = ? AND fecha = ? AND estado = 'pendiente' LIMIT 1`,
@@ -4670,12 +4631,7 @@ app.post('/checador/entrada', async (req, res) => {
                 );
 
                 if (pendiente.length) {
-                    // Si ya hay una pendiente, NO insertamos nada nuevo
-                    console.log("⏳ Usuario re-intentando, pero ya tiene solicitud pendiente");
-                    return res.json({
-                        error: true,
-                        message: 'Ya tienes una solicitud pendiente. Por favor, espera aprobación.'
-                    });
+                    return res.json({ error: true, message: 'Ya tienes una solicitud pendiente. Por favor, espera aprobación.' });
                 }
 
                 const [movResult] = await db.pool.query(
@@ -4685,26 +4641,14 @@ app.post('/checador/entrada', async (req, res) => {
                     [usuario.id, fechaMysql, minutosRetardo]
                 );
 
-            await db.pool.query(
-    `INSERT INTO autorizaciones_ingreso
-    (id_usuario, movimiento_id, fecha, hora_solicitud, estado, usada, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'pendiente', 0, ?, ?)`,
-    [
-        usuario.id,
-        movResult.insertId,
-        fechaHoy,
-        fechaMysql.split(' ')[1], // hora_solicitud
-        fechaMysql,               // created_at
-        fechaMysql                // updated_at
-    ]
-);
+                await db.pool.query(
+                    `INSERT INTO autorizaciones_ingreso
+                    (id_usuario, movimiento_id, fecha, hora_solicitud, estado, usada, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, 'pendiente', 0, ?, ?)`,
+                    [usuario.id, movResult.insertId, fechaHoy, fechaMysql.split(' ')[1], fechaMysql, fechaMysql]
+                );
 
-                console.log("⛔ Intento bloqueado y autorización creada");
-
-                return res.json({
-                    error: true,
-                    message: 'Requiere autorización (Excedió 30 min)'
-                });
+                return res.json({ error: true, message: 'Requiere autorización (Excedió 30 min)' });
             }
         }
 
@@ -4716,21 +4660,12 @@ app.post('/checador/entrada', async (req, res) => {
             [usuario.id, fechaMysql, minutosRetardo, clasificacion]
         );
 
-        console.log("✅ Entrada normal guardada");
-        console.log("====================================");
-
-        return res.json({
-            error: false,
-            message: 'Bienvenido'
-        });
+        console.log("✅ Entrada guardada correctamente");
+        return res.json({ error: false, message: 'Bienvenido' });
 
     } catch (error) {
         console.error('🔥 ERROR CRÍTICO EN CHECADOR:', error);
-        return res.json({
-            error: true,
-            message: 'Error interno',
-            detalle: error.message
-        });
+        return res.json({ error: true, message: 'Error interno', detalle: error.message });
     }
 });
 
