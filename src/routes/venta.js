@@ -4604,53 +4604,85 @@ app.post('/checador/entrada', async (req, res) => {
         }
 
         // 8️⃣ BLOQUEO MAYOR A 30 MIN
-        if (clasificacion === 'sin_pase') {
-            const [authRows] = await db.pool.query(
-                `SELECT id FROM autorizaciones_ingreso
-                 WHERE id_usuario = ? AND fecha = ? AND estado = 'aprobado' AND usada = 0 LIMIT 1`,
-                [usuario.id, fechaHoy]
-            );
+if (clasificacion === 'sin_pase') {
 
-            if (authRows.length) {
-                await db.pool.query(
-                    `INSERT INTO checador_movimientos
-                    (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
-                    VALUES (?, 'entrada', ?, ?, 'sin_pase', 1, 'entrada_autorizada')`,
-                    [usuario.id, fechaMysql, minutosRetardo]
-                );
-                await db.pool.query(
-                    `UPDATE autorizaciones_ingreso SET usada = 1, updated_at = ? WHERE id = ?`,
-                    [fechaMysql, authRows[0].id]
-                );
-                return res.json({ error: false, message: 'Bienvenido (Autorizado)' });
-            } else {
-                const [pendiente] = await db.pool.query(
-                    `SELECT id FROM autorizaciones_ingreso 
-                     WHERE id_usuario = ? AND fecha = ? AND estado = 'pendiente' LIMIT 1`,
-                    [usuario.id, fechaHoy]
-                );
+    // Buscamos SOLO autorizaciones de HOY, que estén APROBADAS y NO USADAS
+    const [authRows] = await db.pool.query(
+        `SELECT id 
+         FROM autorizaciones_ingreso
+         WHERE id_usuario = ?
+         AND fecha = ?
+         AND estado = 'aprobado'
+         AND usada = 0
+         LIMIT 1`,
+        [usuario.id, fechaHoy]
+    );
 
-                if (pendiente.length) {
-                    return res.json({ error: true, message: 'Ya tienes una solicitud pendiente. Por favor, espera aprobación.' });
-                }
+    if (authRows.length) {
+        // SI ENCONTRÓ UNA APROBADA HOY:
+        // Registramos el movimiento como entrada_autorizada
+        await db.pool.query(
+            `INSERT INTO checador_movimientos
+            (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
+            VALUES (?, 'entrada', ?, ?, 'sin_pase', 1, 'entrada_autorizada')`,
+            [usuario.id, fechaMysql, minutosRetardo]
+        );
 
-                const [movResult] = await db.pool.query(
-                    `INSERT INTO checador_movimientos
-                    (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
-                    VALUES (?, 'entrada', ?, ?, 'sin_pase', 0, 'intento_bloqueado')`,
-                    [usuario.id, fechaMysql, minutosRetardo]
-                );
+        // Marcamos esa autorización específica como USADA para que no se vuelva a usar
+        await db.pool.query(
+            `UPDATE autorizaciones_ingreso 
+             SET usada = 1, updated_at = ?
+             WHERE id = ?`,
+            [fechaMysql, authRows[0].id]
+        );
 
-                await db.pool.query(
-                    `INSERT INTO autorizaciones_ingreso
-                    (id_usuario, movimiento_id, fecha, hora_solicitud, estado, usada, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, 'pendiente', 0, ?, ?)`,
-                    [usuario.id, movResult.insertId, fechaHoy, fechaMysql.split(' ')[1], fechaMysql, fechaMysql]
-                );
+        console.log("✅ Entrada autorizada correctamente con registro de hoy");
+        return res.json({ error: false, message: 'Bienvenido (Autorizado)' });
 
-                return res.json({ error: true, message: 'Requiere autorización (Excedió 30 min)' });
-            }
+    } else {
+        // SI NO HAY APROBADAS, revisamos si ya hay una PENDIENTE para hoy
+        const [pendiente] = await db.pool.query(
+            `SELECT id FROM autorizaciones_ingreso 
+             WHERE id_usuario = ? AND fecha = ? AND estado = 'pendiente' LIMIT 1`,
+            [usuario.id, fechaHoy]
+        );
+
+        if (pendiente.length) {
+            console.log("⏳ Ya existe una solicitud pendiente hoy");
+            return res.json({
+                error: true,
+                message: 'Tu solicitud sigue pendiente. Pide al administrador que la apruebe.'
+            });
         }
+
+        // Si no hay aprobada ni pendiente, CREAMOS UNA NUEVA (Primer intento del día)
+        const [movResult] = await db.pool.query(
+            `INSERT INTO checador_movimientos
+            (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
+            VALUES (?, 'entrada', ?, ?, 'sin_pase', 0, 'intento_bloqueado')`,
+            [usuario.id, fechaMysql, minutosRetardo]
+        );
+
+        await db.pool.query(
+            `INSERT INTO autorizaciones_ingreso
+            (id_usuario, movimiento_id, fecha, hora_solicitud, estado, usada, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'pendiente', 0, ?, ?)`,
+            [
+                usuario.id,
+                movResult.insertId,
+                fechaHoy,
+                fechaMysql.split(' ')[1],
+                fechaMysql,
+                fechaMysql
+            ]
+        );
+
+        return res.json({
+            error: true,
+            message: 'Requiere autorización (Excedió 30 min). Solicitud enviada.'
+        });
+    }
+}
 
         // 9️⃣ ENTRADA NORMAL
         await db.pool.query(
