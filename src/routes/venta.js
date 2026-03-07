@@ -4612,30 +4612,49 @@ app.post('/checador/entrada', async (req, res) => {
 if (clasificacion === 'sin_pase') {
 
     // Buscamos SOLO autorizaciones de HOY, que estén APROBADAS y NO USADAS
-    const [authRows] = await db.pool.query(
-        `SELECT id 
-         FROM autorizaciones_ingreso
-         WHERE id_usuario = ?
-         AND fecha = ?
-         AND estado = 'aprobado'
-         AND usada = 0
-         LIMIT 1`,
-        [usuario.id, fechaHoy]
-    );
+ const [authRows] = await db.pool.query(
+    `SELECT id, estado
+     FROM autorizaciones_ingreso
+     WHERE id_usuario = ?
+     AND fecha = ?
+     AND estado IN ('aprobado','perdonado')
+     AND usada = 0
+     LIMIT 1`,
+    [usuario.id, fechaHoy]
+);
 
    if (authRows.length) {
 
     const autorizacionId = authRows[0].id;
+    const estadoAutorizacion = authRows[0].estado;
 
-    // Registramos el movimiento como entrada_autorizada
+    let minutosFinal = minutosRetardo;
+    let clasificacionFinal = 'sin_pase';
+    let tipoEventoFinal = 'entrada_autorizada';
+
+    // SI ES PERDONADO → eliminamos el retardo
+    if (estadoAutorizacion === 'perdonado') {
+        minutosFinal = 0;
+        clasificacionFinal = 'normal';
+        tipoEventoFinal = 'entrada_perdonada';
+    }
+
+    // Registramos movimiento
     await db.pool.query(
         `INSERT INTO checador_movimientos
         (colaborador_id, autorizacion_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
-        VALUES (?, ?, 'entrada', ?, ?, 'sin_pase', 1, 'entrada_autorizada')`,
-        [usuario.id, autorizacionId, fechaMysql, minutosRetardo]
+        VALUES (?, ?, 'entrada', ?, ?, ?, 1, ?)`,
+        [
+            usuario.id,
+            autorizacionId,
+            fechaMysql,
+            minutosFinal,
+            clasificacionFinal,
+            tipoEventoFinal
+        ]
     );
 
-    // Marcamos esa autorización específica como usada
+    // Marcamos autorización como usada
     await db.pool.query(
         `UPDATE autorizaciones_ingreso 
          SET usada = 1, updated_at = ?
@@ -4643,7 +4662,12 @@ if (clasificacion === 'sin_pase') {
         [fechaMysql, autorizacionId]
     );
 
-    console.log("✅ Entrada autorizada correctamente con registro de hoy");
+    console.log("✅ Entrada autorizada/perdonada correctamente");
+
+    if (estadoAutorizacion === 'perdonado') {
+        return res.json({ error: false, message: 'Bienvenido (Retardo Perdondado)' });
+    }
+
     return res.json({ error: false, message: 'Bienvenido (Autorizado)' });
 
 } else {
