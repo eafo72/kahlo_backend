@@ -328,7 +328,7 @@ app.get('/obtener/:id', async (req, res) => {
 				});
 		}
 
-		let query = `SELECT id, nombres, apellidos, telefono, telefono_emergencia, correo, isClient, status, created_at, name_on_card, card_number, expires_month, expires_year, cvc 
+		let query = `SELECT id, nombres, apellidos, telefono, telefono_emergencia, correo, isClient, isAdmin, isInvestor, isPartner, isOperator, isGuia, isSpecialist, status, created_at, name_on_card, card_number, expires_month, expires_year, cvc 
 						FROM usuario 
 						WHERE id=${clientId} 
 						`;
@@ -359,8 +359,28 @@ app.get('/obtener/:id', async (req, res) => {
 			}
 		}
 
+		// Determinar tipo_usuario basado en los flags
+		const userData = client[0][0];
+		let tipo_usuario = null;
 
+		if (userData.isAdmin === 1) {
+			tipo_usuario = 'Administrador';
+		} else if (userData.isClient === 1) {
+			tipo_usuario = 'Cliente';
+		} else if (userData.isInvestor === 1) {
+			tipo_usuario = 'Inversionista';
+		} else if (userData.isPartner === 1) {
+			tipo_usuario = 'Partner';
+		} else if (userData.isOperator === 1) {
+			tipo_usuario = 'Tour Operador';
+		} else if (userData.isGuia === 1) {
+			tipo_usuario = 'Colaborador';
+		} else if (userData.isSpecialist === 1) {
+			tipo_usuario = 'Especialista';
+		}
 
+		// Agregar tipo_usuario al objeto de respuesta
+		client[0][0].tipo_usuario = tipo_usuario;
 
 		res.status(200).json(client[0]);
 
