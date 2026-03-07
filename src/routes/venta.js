@@ -4623,28 +4623,30 @@ if (clasificacion === 'sin_pase') {
         [usuario.id, fechaHoy]
     );
 
-    if (authRows.length) {
-        // SI ENCONTRÓ UNA APROBADA HOY:
-        // Registramos el movimiento como entrada_autorizada
-        await db.pool.query(
-            `INSERT INTO checador_movimientos
-            (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
-            VALUES (?, 'entrada', ?, ?, 'sin_pase', 1, 'entrada_autorizada')`,
-            [usuario.id, fechaMysql, minutosRetardo]
-        );
+   if (authRows.length) {
 
-        // Marcamos esa autorización específica como USADA para que no se vuelva a usar
-        await db.pool.query(
-            `UPDATE autorizaciones_ingreso 
-             SET usada = 1, updated_at = ?
-             WHERE id = ?`,
-            [fechaMysql, authRows[0].id]
-        );
+    const autorizacionId = authRows[0].id;
 
-        console.log("✅ Entrada autorizada correctamente con registro de hoy");
-        return res.json({ error: false, message: 'Bienvenido (Autorizado)' });
+    // Registramos el movimiento como entrada_autorizada
+    await db.pool.query(
+        `INSERT INTO checador_movimientos
+        (colaborador_id, autorizacion_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
+        VALUES (?, ?, 'entrada', ?, ?, 'sin_pase', 1, 'entrada_autorizada')`,
+        [usuario.id, autorizacionId, fechaMysql, minutosRetardo]
+    );
 
-    } else {
+    // Marcamos esa autorización específica como usada
+    await db.pool.query(
+        `UPDATE autorizaciones_ingreso 
+         SET usada = 1, updated_at = ?
+         WHERE id = ?`,
+        [fechaMysql, autorizacionId]
+    );
+
+    console.log("✅ Entrada autorizada correctamente con registro de hoy");
+    return res.json({ error: false, message: 'Bienvenido (Autorizado)' });
+
+} else {
         // SI NO HAY APROBADAS, revisamos si ya hay una PENDIENTE para hoy
         const [pendiente] = await db.pool.query(
             `SELECT id FROM autorizaciones_ingreso 
