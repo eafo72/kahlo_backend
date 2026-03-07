@@ -4520,7 +4520,7 @@ app.post('/checador/entrada', async (req, res) => {
         const fechaMysql = ahoraCDMX.toLocaleString("sv-SE").replace('T', ' ');
         const fechaHoy = fechaMysql.split(' ')[0];
 
-        // 4️⃣ VERIFICAR ÚLTIMO MOVIMIENTO (Aplica para ambos)
+    // 4️⃣ VERIFICAR ÚLTIMO MOVIMIENTO
         const [ultimoRows] = await db.pool.query(
             `SELECT tipo_evento FROM checador_movimientos 
              WHERE colaborador_id = ? AND DATE(fecha_hora) = ?
@@ -4532,9 +4532,14 @@ app.post('/checador/entrada', async (req, res) => {
 
         if (ultimoRows.length) {
             const ultimo = ultimoRows[0].tipo_evento;
+            
             if (ultimo === 'salida_comida') {
                 tipoEvento = 'regreso_comida';
-            } else {
+            } else if (ultimo === 'intento_bloqueado') {
+                // Si el último fue un bloqueo, permitimos que intente de nuevo
+                tipoEvento = 'entrada_inicial'; 
+            } else if (ultimo === 'entrada_inicial' || ultimo === 'entrada_autorizada' || ultimo === 'regreso_comida') {
+                // Si ya tiene una entrada exitosa, entonces sí bloqueamos
                 return res.json({ error: true, message: 'Ya tienes una entrada registrada hoy' });
             }
         }
