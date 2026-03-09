@@ -24,7 +24,7 @@ app.get('/guias', async (req, res) => {
                         INNER JOIN  empresa 
                         AS e
                         ON e.id = u.empresa_id
-                        WHERE isGuia=1`;
+                        WHERE isGuia=1 OR isSpecialist = 1`;
         let guias = await db.pool.query(query);
 
         res.status(200).json(guias[0]);
@@ -44,7 +44,7 @@ app.get('/obtenerByEmpresa/:id', async (req, res) => {
                         INNER JOIN  empresa 
                         AS e
                         ON e.id = u.empresa_id
-                        WHERE isGuia=1
+                        WHERE (isGuia=1 OR isSpecialist = 1)
                         AND u.empresa_id=${empresaId}`;
         let guias = await db.pool.query(query);
 
