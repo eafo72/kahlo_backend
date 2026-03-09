@@ -6823,4 +6823,96 @@ app.post('/horarios-usuario-eventual-crear', async (req, res) => {
     }
 });
 
+app.delete('/horarios-eventuales-eliminar/:horarioId', async (req, res) => {
+    try {
+        const { horarioId } = req.params;
+
+        if (!horarioId) {
+            return res.status(400).json({
+                error: true,
+                message: 'El horarioId es requerido'
+            });
+        }
+
+        // Validar que sea un número
+        if (isNaN(parseInt(horarioId))) {
+            return res.status(400).json({
+                error: true,
+                message: 'El horarioId debe ser un número válido'
+            });
+        }
+
+        const connection = await db.pool.getConnection();
+        await connection.beginTransaction();
+
+        try {
+            // Verificar que el horario eventual exista
+            const [horarioRows] = await connection.query(
+                `SELECT id, id_usuario, fecha_especifica, hora_entrada, hora_salida, utilizado
+                 FROM horarios_eventuales 
+                 WHERE id = ? LIMIT 1`,
+                [horarioId]
+            );
+
+            if (!horarioRows.length) {
+                await connection.rollback();
+                return res.status(404).json({
+                    error: true,
+                    message: 'Horario eventual no encontrado'
+                });
+            }
+
+            const horario = horarioRows[0];
+
+            // No permitir eliminar si ya fue utilizado
+            if (horario.utilizado === 1) {
+                await connection.rollback();
+                return res.status(400).json({
+                    error: true,
+                    message: 'No se puede eliminar un horario que ya fue utilizado'
+                });
+            }
+
+            // Eliminar el horario eventual
+            await connection.query(
+                'DELETE FROM horarios_eventuales WHERE id = ?',
+                [horarioId]
+            );
+
+            await connection.commit();
+
+            return res.json({
+                error: false,
+                message: 'Horario eventual eliminado exitosamente',
+                horario_eliminado: {
+                    id: horario.id,
+                    id_usuario: horario.id_usuario,
+                    fecha_especifica: horario.fecha_especifica,
+                    hora_entrada: horario.hora_entrada,
+                    hora_salida: horario.hora_salida
+                }
+            });
+
+        } catch (error) {
+            await connection.rollback();
+            console.error('Error eliminando horario eventual:', error);
+            return res.status(500).json({
+                error: true,
+                message: 'Error eliminando el horario eventual',
+                details: error.message
+            });
+        } finally {
+            connection.release();
+        }
+
+    } catch (error) {
+        console.error('Error en horarios-eventuales-eliminar:', error);
+        return res.status(500).json({
+            error: true,
+            message: 'Error interno del servidor',
+            details: error.message
+        });
+    }
+});
+
 module.exports = app
