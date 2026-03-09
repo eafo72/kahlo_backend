@@ -18,7 +18,7 @@ const fetch = require("node-fetch");
 //Trae todos los guias de la DB
 app.get('/guias', async (req, res) => {
     try {
-        let query = `SELECT u.id, nombres, apellidos, u.telefono, u.correo, isGuia, foto, identificacion, u.status, u.updated_at, empresa_id, cargo, area, nss, e.nombre AS empresa
+        let query = `SELECT u.id, nombres, apellidos, u.telefono, u.correo, isGuia, isSpecialist, foto, identificacion, u.status, u.updated_at, empresa_id, cargo, area, nss, e.nombre AS empresa
                         FROM usuario 
                         AS u
                         INNER JOIN  empresa 
@@ -38,7 +38,7 @@ app.get('/obtenerByEmpresa/:id', async (req, res) => {
     try {
         let empresaId = req.params.id;
 
-        let query = `SELECT u.id, nombres, apellidos, u.telefono, u.correo, isGuia, foto, identificacion, u.status, u.updated_at, empresa_id, cargo, area, nss, e.nombre AS empresa
+        let query = `SELECT u.id, nombres, apellidos, u.telefono, u.correo, isGuia, isSpecialist, foto, identificacion, u.status, u.updated_at, empresa_id, cargo, area, nss, e.nombre AS empresa
                         FROM usuario 
                         AS u
                         INNER JOIN  empresa 
