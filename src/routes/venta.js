@@ -6543,6 +6543,60 @@ app.get('/horarios-usuario/:id_usuario', async (req, res) => {
     }
 });
 
+app.get('/horarios-usuario-eventual/:id_usuario', async (req, res) => {
+    try {
+        const { id_usuario } = req.params;
+
+        if (!id_usuario) {
+            return res.status(400).json({
+                error: true,
+                message: 'El id_usuario es requerido'
+            });
+        }
+
+        const query = `
+            SELECT 
+                he.id,
+                he.colaborador_id,
+                he.fecha as fecha_especifica,
+                he.hora_entrada,
+                he.hora_salida,
+                he.utilizado,
+                he.activo,
+                he.created_at,
+                he.updated_at,
+                DATE_FORMAT(he.fecha, '%d/%m/%Y') as fecha_formateada,
+                CASE 
+                    WHEN he.utilizado = 1 THEN 'Utilizado'
+                    ELSE 'Pendiente'
+                END as estado_utilizacion,
+                CASE 
+                    WHEN he.activo = 1 THEN 'Activo'
+                    ELSE 'Inactivo'
+                END as estado_horario
+            FROM horarios_eventuales he
+            WHERE he.colaborador_id = ?
+            ORDER BY he.fecha ASC
+        `;
+
+        const [horariosEventuales] = await db.pool.query(query, [id_usuario]);
+
+        return res.json({
+            error: false,
+            data: horariosEventuales,
+            total: horariosEventuales.length
+        });
+
+    } catch (error) {
+        console.error('Error obteniendo horarios eventuales del usuario:', error);
+        return res.status(500).json({
+            error: true,
+            message: 'Error obteniendo los horarios eventuales',
+            details: error.message
+        });
+    }
+});
+
 app.post('/horarios-usuario-crear', async (req, res) => {
     try {
         const { id_usuario, horarios } = req.body;
@@ -6643,6 +6697,128 @@ app.post('/horarios-usuario-crear', async (req, res) => {
 
     } catch (error) {
         console.error('Error en horarios-usuario-crear:', error);
+        return res.status(500).json({
+            error: true,
+            message: 'Error interno del servidor',
+            details: error.message
+        });
+    }
+});
+
+app.post('/horarios-usuario-eventual-crear', async (req, res) => {
+    try {
+        const { id_usuario, fecha_especifica, hora_entrada, hora_salida } = req.body;
+
+        // Validar campos requeridos
+        if (!id_usuario || !fecha_especifica || !hora_entrada || !hora_salida) {
+            return res.status(400).json({
+                error: true,
+                message: 'Se requieren id_usuario, fecha_especifica, hora_entrada y hora_salida'
+            });
+        }
+
+        // Validar formato de fecha (YYYY-MM-DD)
+        const fechaRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!fechaRegex.test(fecha_especifica)) {
+            return res.status(400).json({
+                error: true,
+                message: 'La fecha_especifica debe tener formato YYYY-MM-DD'
+            });
+        }
+
+        // Validar formato de hora (HH:MM o HH:MM:SS)
+        const horaRegex = /^([01]?[0-9]|2[0-3]):([0-5][0-9])(:([0-5][0-9]))?$/;
+        if (!horaRegex.test(hora_entrada) || !horaRegex.test(hora_salida)) {
+            return res.status(400).json({
+                error: true,
+                message: 'Las horas deben tener formato HH:MM o HH:MM:SS'
+            });
+        }
+
+        // Validar que hora_salida sea posterior a hora_entrada
+        const [hEntrada, mEntrada] = hora_entrada.split(':');
+        const [hSalida, mSalida] = hora_salida.split(':');
+        const minutosEntrada = parseInt(hEntrada) * 60 + parseInt(mEntrada);
+        const minutosSalida = parseInt(hSalida) * 60 + parseInt(mSalida);
+
+        if (minutosSalida <= minutosEntrada) {
+            return res.status(400).json({
+                error: true,
+                message: 'La hora_salida debe ser posterior a la hora_entrada'
+            });
+        }
+
+        const connection = await db.pool.getConnection();
+        await connection.beginTransaction();
+
+        try {
+            // Verificar que el usuario exista
+            const [usuarioRows] = await connection.query(
+                'SELECT id FROM usuario WHERE id = ? LIMIT 1',
+                [id_usuario]
+            );
+
+            if (!usuarioRows.length) {
+                await connection.rollback();
+                return res.status(400).json({
+                    error: true,
+                    message: 'El usuario no existe'
+                });
+            }
+
+            // Verificar si ya existe un horario eventual para esa fecha
+            const [existenteRows] = await connection.query(
+                `SELECT id FROM horarios_eventuales 
+                 WHERE colaborador_id = ? AND fecha = ? LIMIT 1`,
+                [id_usuario, fecha_especifica]
+            );
+
+            if (existenteRows.length) {
+                await connection.rollback();
+                return res.status(400).json({
+                    error: true,
+                    message: 'Ya existe un horario eventual para esa fecha'
+                });
+            }
+
+            // Insertar horario eventual
+            const [result] = await connection.query(
+                `INSERT INTO horarios_eventuales 
+                 (colaborador_id, fecha, hora_entrada, hora_salida, utilizado, activo, created_at, updated_at) 
+                 VALUES (?, ?, ?, ?, 0, 1, NOW(), NOW())`,
+                [id_usuario, fecha_especifica, hora_entrada, hora_salida]
+            );
+
+            await connection.commit();
+
+            return res.json({
+                error: false,
+                message: 'Horario eventual creado exitosamente',
+                horario_creado: {
+                    id: result.insertId,
+                    id_usuario,
+                    fecha_especifica,
+                    hora_entrada,
+                    hora_salida,
+                    activo: 1,
+                    utilizado: 0
+                }
+            });
+
+        } catch (error) {
+            await connection.rollback();
+            console.error('Error creando horario eventual:', error);
+            return res.status(500).json({
+                error: true,
+                message: 'Error creando el horario eventual',
+                details: error.message
+            });
+        } finally {
+            connection.release();
+        }
+
+    } catch (error) {
+        console.error('Error en horarios-usuario-eventual-crear:', error);
         return res.status(500).json({
             error: true,
             message: 'Error interno del servidor',
