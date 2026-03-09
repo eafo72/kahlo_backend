@@ -5087,40 +5087,80 @@ app.post('/autorizaciones/rechazar', async (req, res) => {
     }
 });
 
-// 4. PERDONAR RETARDO (ASISTENCIA / NÓMINA)
+// 4. PERDONAR RETARDO (ASISTENCIA / NÓMINA) - VERSIÓN COMPLETA
 app.post('/autorizaciones/perdonar', async (req, res) => {
+    const connection = await db.pool.getConnection(); // Usamos conexión manual para la transacción
     try {
-        console.log("💰 PERDONANDO RETARDO EN ASISTENCIA");
+        await connection.beginTransaction();
+
+        console.log("💰 INICIANDO PROCESO DE PERDÓN DE RETARDO");
         const { 
             id_usuario_colaborador, 
             id_usuario_admin, 
-            fecha, 
+            fecha, // Formato YYYY-MM-DD
             minutos_retraso, 
             motivo, 
             tipo_autorizacion 
         } = req.body;
 
-        // Usamos la hora real de CDMX para el registro de auditoría
-        const ahoraCDMX = new Date(
-            new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" })
-        );
+        // Validaciones básicas
+        if (!id_usuario_colaborador || !fecha) {
+            return res.json({ error: true, message: 'Faltan datos esenciales (colaborador o fecha)' });
+        }
+
+        const ahoraCDMX = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
         const fechaHoraRegistro = ahoraCDMX.toLocaleString("sv-SE").replace('T', ' ');
 
-        await db.pool.query(
+        // 1️⃣ REGISTRO EN AUDITORÍA (Lo que ya tenías)
+        await connection.query(
             `INSERT INTO autorizaciones_asistencia 
             (id_usuario_colaborador, id_usuario_admin, fecha, minutos_retraso, motivo, tipo_autorizacion, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [id_usuario_colaborador, id_usuario_admin, fecha, minutos_retraso, motivo, tipo_autorizacion, fechaHoraRegistro]
         );
 
+        // 2️⃣ CORREGIR EL MOVIMIENTO EN EL CHECADOR
+        // Buscamos el 'intento_bloqueado' de hoy para ese usuario y lo convertimos en entrada válida sin retardo
+        const [movimientoUpdate] = await connection.query(
+            `UPDATE checador_movimientos 
+             SET tipo_evento = 'entrada_perdonada', 
+                 minutos_retardo = 0, 
+                 clasificacion = 'normal',
+                 autorizado = 1 
+             WHERE colaborador_id = ? 
+             AND DATE(fecha_hora) = ? 
+             AND tipo_evento = 'intento_bloqueado'`,
+            [id_usuario_colaborador, fecha]
+        );
+
+        // 3️⃣ CERRAR LA SOLICITUD DE INGRESO
+        // Marcamos la autorización como 'perdonado' y 'usada' para que el checador no la busque más
+        await connection.query(
+            `UPDATE autorizaciones_ingreso 
+             SET estado = 'perdonado', 
+                 usada = 1, 
+                 autorizado_por = ?,
+                 updated_at = ?
+             WHERE id_usuario = ? 
+             AND fecha = ? 
+             AND estado = 'pendiente'`,
+            [id_usuario_admin, fechaHoraRegistro, id_usuario_colaborador, fecha]
+        );
+
+        await connection.commit();
+        console.log("✅ TODO ACTUALIZADO: Auditoría guardada, movimiento corregido y solicitud cerrada.");
+
         return res.json({ 
             error: false, 
-            message: 'Retardo perdonado correctamente en el sistema de asistencia.' 
+            message: 'Retardo perdonado. El registro de asistencia se ha corregido a 0 minutos.' 
         });
 
     } catch (error) {
-        console.error('🔥 ERROR EN PERDONAR RETARDO:', error);
-        return res.json({ error: true, message: error.message });
+        await connection.rollback(); // Si algo falla, deshacemos todos los cambios
+        console.error('🔥 ERROR CRÍTICO AL PERDONAR:', error);
+        return res.json({ error: true, message: 'No se pudo procesar el perdón: ' + error.message });
+    } finally {
+        connection.release(); // Liberamos la conexión al pool
     }
 });
 
