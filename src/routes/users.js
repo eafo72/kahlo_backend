@@ -45,9 +45,9 @@ app.get('/clientes', async (req, res) => {
 app.get('/todos', async (req, res) => {
 	try {
 
-		let query = `SELECT id, nombres, apellidos, telefono, correo, isClient, isAdmin, isOperator, isInvestor, isPartner, isGuia, isSpecialist, status 
+		let query = `SELECT id, nombres, apellidos, telefono, correo, isClient, isAdmin, isOperator, isInvestor, isPartner, isGuia, isSpecialist, isEventual, status 
                         FROM usuario 
-                        WHERE isClient = 1 OR isAdmin = 1 OR isOperator = 1 OR isInvestor = 1 OR isPartner = 1 OR isGuia = 1 OR isSpecialist = 1`;
+                        WHERE isClient = 1 OR isAdmin = 1 OR isOperator = 1 OR isInvestor = 1 OR isPartner = 1 OR isGuia = 1 OR isSpecialist = 1 OR isEventual = 1`;
 		let usuarios = await db.pool.query(query);
 		res.json(usuarios[0]);
 
@@ -85,9 +85,9 @@ app.post('/crear', async (req, res) => {
 		}
 
 		// Validar que tipo_usuario sea uno de los valores permitidos
-		const tiposPermitidos = ['Administrador', 'Cliente', 'Inversionista', 'Partner', 'Tour Operador', 'Colaborador', 'Especialista'];
+		const tiposPermitidos = ['Administrador', 'Cliente', 'Inversionista', 'Partner', 'Tour Operador', 'Colaborador', 'Especialista', 'Eventual'];
 		if (!tiposPermitidos.includes(tipo_usuario)) {
-			errors.push({ msg: "El campo tipo_usuario debe ser: Administrador, Cliente, Inversionista, Partner o Tour Operador" });
+			errors.push({ msg: "El campo tipo_usuario debe ser: Administrador, Cliente, Inversionista, Partner, Tour Operador, Colaborador, Especialista o Eventual" });
 		}
 
 		if (errors.length >= 1) {
@@ -125,7 +125,7 @@ app.post('/crear', async (req, res) => {
 		let fecha = date + ' ' + time;
 
 		// Determinar qué campo establecer según el tipo de usuario
-		let isAdmin = 0, isClient = 0, isInvestor = 0, isPartner = 0, isOperator = 0, isGuia = 0, isSpecialist = 0;
+		let isAdmin = 0, isClient = 0, isInvestor = 0, isPartner = 0, isOperator = 0, isGuia = 0, isSpecialist = 0, isEventual = 0;
 		
 		switch(tipo_usuario) {
 			case 'Administrador':
@@ -149,12 +149,15 @@ app.post('/crear', async (req, res) => {
 			case 'Especialista':
 				isSpecialist = 1;
 				break;
+			case 'Eventual':
+				isEventual = 1;
+				break;
 		}
 
 		query = `INSERT INTO usuario 
-					(nombres, apellidos, telefono, telefono_emergencia, correo, password, isAdmin, isClient, isInvestor, isPartner, isOperator, isGuia, isSpecialist, created_at, updated_at) 
+					(nombres, apellidos, telefono, telefono_emergencia, correo, password, isAdmin, isClient, isInvestor, isPartner, isOperator, isGuia, isSpecialist, isEventual, created_at, updated_at) 
 					VALUES 
-					('${nombres}', '${apellidos}', '${telefono}', '${telefono_emergencia}', '${correo}', '${hashedPassword}', ${isAdmin}, ${isClient}, ${isInvestor}, ${isPartner}, ${isOperator}, ${isGuia}, ${isSpecialist}, '${fecha}', '${fecha}')`;
+					('${nombres}', '${apellidos}', '${telefono}', '${telefono_emergencia}', '${correo}', '${hashedPassword}', ${isAdmin}, ${isClient}, ${isInvestor}, ${isPartner}, ${isOperator}, ${isGuia}, ${isSpecialist}, ${isEventual}, '${fecha}', '${fecha}')`;
 
 
 		let result = await db.pool.query(query);
@@ -328,7 +331,7 @@ app.get('/obtener/:id', async (req, res) => {
 				});
 		}
 
-		let query = `SELECT id, nombres, apellidos, telefono, telefono_emergencia, correo, isClient, isAdmin, isInvestor, isPartner, isOperator, isGuia, isSpecialist, status, created_at, name_on_card, card_number, expires_month, expires_year, cvc 
+		let query = `SELECT id, nombres, apellidos, telefono, telefono_emergencia, correo, isClient, isAdmin, isInvestor, isPartner, isOperator, isGuia, isSpecialist, isEventual, status, created_at, name_on_card, card_number, expires_month, expires_year, cvc 
 						FROM usuario 
 						WHERE id=${clientId} 
 						`;
@@ -377,6 +380,8 @@ app.get('/obtener/:id', async (req, res) => {
 			tipo_usuario = 'Colaborador';
 		} else if (userData.isSpecialist === 1) {
 			tipo_usuario = 'Especialista';
+		} else if (userData.isEventual === 1) {
+			tipo_usuario = 'Eventual';
 		}
 
 		// Agregar tipo_usuario al objeto de respuesta
@@ -393,7 +398,7 @@ app.get('/obtener/:id', async (req, res) => {
 app.post('/verificar', auth, async (req, res) => {
 	//CONFIRMAMOS QUE EL USUARIO EXISTA EN LA BD Y RETORNAMOS SUS DATOS EXCLUYENDO EL PASSW
 	try {
-		let query = `SELECT id, nombres, apellidos, telefono, telefono_emergencia, correo, isClient, isAdmin, isSuperAdmin, isGuia, isInvestor, isPartner, isSpecialist, isOperator, saldo, status, created_at, empresa_id FROM usuario WHERE id='${req.user.id}'`;
+		let query = `SELECT id, nombres, apellidos, telefono, telefono_emergencia, correo, isClient, isAdmin, isSuperAdmin, isGuia, isInvestor, isPartner, isSpecialist, isOperator, isEventual, saldo, status, created_at, empresa_id FROM usuario WHERE id='${req.user.id}'`;
 		let client = await db.pool.query(query);
 
 		res.status(200).json(client[0]);
@@ -488,9 +493,9 @@ app.put('/set', async (req, res) => {
 		}
 
 		// Validar que tipo_usuario sea uno de los valores permitidos
-		const tiposPermitidos = ['Administrador', 'Cliente', 'Inversionista', 'Partner', 'Tour Operador', 'Colaborador', 'Especialista'];
+		const tiposPermitidos = ['Administrador', 'Cliente', 'Inversionista', 'Partner', 'Tour Operador', 'Colaborador', 'Especialista', 'Eventual'];
 		if (!tiposPermitidos.includes(tipo_usuario)) {
-			errors.push({ msg: "El campo tipo_usuario debe ser: Administrador, Cliente, Inversionista, Partner o Tour Operador" });
+			errors.push({ msg: "El campo tipo_usuario debe ser: Administrador, Cliente, Inversionista, Partner, Tour Operador, Colaborador, Especialista o Eventual" });
 		}
 		
 		if (errors.length >= 1) {
@@ -510,7 +515,7 @@ app.put('/set', async (req, res) => {
 		let fecha = date + ' ' + time;
 
 		// Determinar qué campo establecer según el tipo de usuario
-		let isAdmin = 0, isClient = 0, isInvestor = 0, isPartner = 0, isOperator = 0, isGuia = 0, isSpecialist = 0;
+		let isAdmin = 0, isClient = 0, isInvestor = 0, isPartner = 0, isOperator = 0, isGuia = 0, isSpecialist = 0, isEventual = 0;
 		
 		switch(tipo_usuario) {
 			case 'Administrador':
@@ -533,6 +538,9 @@ app.put('/set', async (req, res) => {
 				break;	
 			case 'Especialista':
 				isSpecialist = 1;
+				break;	
+			case 'Eventual':
+				isEventual = 1;
 				break;	
 		}
 
@@ -561,6 +569,7 @@ app.put('/set', async (req, res) => {
 						isOperator			 = ${isOperator},
 						isGuia				 = ${isGuia},
 						isSpecialist		 = ${isSpecialist},
+						isEventual			 = ${isEventual},
                         updated_at           = '${fecha}'
                         WHERE id             = ${id}`;
 		} else {
@@ -581,6 +590,7 @@ app.put('/set', async (req, res) => {
 						isOperator			 = ${isOperator},
 						isGuia				 = ${isGuia},
 						isSpecialist		 = ${isSpecialist},
+						isEventual			 = ${isEventual},
                         updated_at           = '${fecha}'
                         WHERE id             = ${id}`;
 		}
