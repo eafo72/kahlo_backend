@@ -4847,10 +4847,9 @@ app.post('/checador/salida', async (req, res) => {
     if (tipoSalida === '1') {
 
       if (
-        ultimoEvento !== 'entrada_inicial' &&
-        ultimoEvento !== 'entrada_autorizada'
-        ultimoEvento !== 'entrada_autorizada' &&
-        ultimoEvento !== 'entrada_perdonada'
+       ultimoEvento !== 'entrada_inicial' &&
+       ultimoEvento !== 'entrada_autorizada' &&
+       ultimoEvento !== 'entrada_perdonada'
       ) {
         console.log("❌ Secuencia inválida comida");
         return res.json({
@@ -4867,8 +4866,6 @@ app.post('/checador/salida', async (req, res) => {
 
       if (
         ultimoEvento !== 'entrada_inicial' &&
-        ultimoEvento !== 'regreso_comida' &&
-        ultimoEvento !== 'entrada_autorizada'
         ultimoEvento !== 'entrada_autorizada' &&
         ultimoEvento !== 'entrada_perdonada'
       ) {
