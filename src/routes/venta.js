@@ -6769,7 +6769,7 @@ app.post('/horarios-usuario-eventual-crear', async (req, res) => {
             // Verificar si ya existe un horario eventual para esa fecha
             const [existenteRows] = await connection.query(
                 `SELECT id FROM horarios_eventuales 
-                 WHERE colaborador_id = ? AND fecha = ? LIMIT 1`,
+                 WHERE id_usuario = ? AND fecha_especifica = ? LIMIT 1`,
                 [id_usuario, fecha_especifica]
             );
 
@@ -6784,7 +6784,7 @@ app.post('/horarios-usuario-eventual-crear', async (req, res) => {
             // Insertar horario eventual
             const [result] = await connection.query(
                 `INSERT INTO horarios_eventuales 
-                 (colaborador_id, fecha, hora_entrada, hora_salida, utilizado, activo, created_at, updated_at) 
+                 (id_usuario, fecha_especifica, hora_entrada, hora_salida, utilizado, activo, created_at, updated_at) 
                  VALUES (?, ?, ?, ?, 0, 1, NOW(), NOW())`,
                 [id_usuario, fecha_especifica, hora_entrada, hora_salida]
             );
