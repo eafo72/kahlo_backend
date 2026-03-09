@@ -129,15 +129,14 @@ app.post('/crear', imageController.upload, async (req, res) => {
     // VALIDAMOS ARCHIVOS
     // ============================
     let foto1 = null;
-    let identificacion1 = null;
-
+    
     let existeFoto = req.files?.foto && req.files.foto.length > 0;
-    let existeIdentificacion = req.files?.identificacion && req.files.identificacion.length > 0;
+    
 
     // ============================
     // SI HAY ARCHIVOS, LOS SUBIMOS
     // ============================
-    if (existeFoto || existeIdentificacion) {
+    if (existeFoto) {
 
       let formdata = new FormData();
 
@@ -151,15 +150,7 @@ app.post('/crear', imageController.upload, async (req, res) => {
         formdata.append('nombre_foto', tituloFoto);
       }
 
-      if (existeIdentificacion) {
-        let tituloIdentificacion = `${date}-${req.files.identificacion[0].originalname}`;
-        identificacion1 = `${process.env.URLFRONT}/images/guias/${tituloIdentificacion}`;
-
-        let file2 = fs.readFileSync(req.files.identificacion[0].path, { encoding: "base64" });
-
-        formdata.append('identificacion', file2);
-        formdata.append('nombre_identificacion', tituloIdentificacion);
-      }
+      
 
       let response = await fetch(`${process.env.URLFRONT}/images/guias/api_guias_base64.php`, {
         method: 'POST',
@@ -183,8 +174,7 @@ app.post('/crear', imageController.upload, async (req, res) => {
     // PREPARAMOS VALORES PARA SQL
     // ============================
     let fotoDB = foto1 ? `'${foto1}'` : `NULL`;
-    let identificacionDB = identificacion1 ? `'${identificacion1}'` : `NULL`;
-
+    
     // ============================
     // INSERT
     // ============================
@@ -192,28 +182,28 @@ app.post('/crear', imageController.upload, async (req, res) => {
 
       query = `INSERT INTO usuario 
           (nombres, apellidos, telefono, correo, password,
-          isGuia, foto, identificacion, empresa_id, cargo, area, nss, hora_entrada, hora_salida, hora_salida_comer, hora_regreso_comer,
+          isGuia, foto,  empresa_id, cargo, area, nss, hora_entrada, hora_salida, hora_salida_comer, hora_regreso_comer,
           created_at, updated_at) 
           VALUES 
           ('${nombres}', '${apellidos}', 
           ${telefono ? `'${telefono}'` : 'NULL'},
           '${correo}', 
           '${hashedPassword}', 
-          1, ${fotoDB}, ${identificacionDB}, '${empresa_id}', '${cargo}', '${area}', '${nss}', '${hora_entrada}', '${hora_salida}', '${hora_salida_comer}', '${hora_regreso_comer}',
+          1, ${fotoDB}, '${empresa_id}', '${cargo}', '${area}', '${nss}', '${hora_entrada}', '${hora_salida}', '${hora_salida_comer}', '${hora_regreso_comer}',
           '${fecha}', '${fecha}')`;
 
     } else if (tipoColaborador == 'Especialista') {
 
       query = `INSERT INTO usuario 
           (nombres, apellidos, telefono, correo, password,
-          isSpecialist, foto, identificacion, empresa_id, cargo, area, nss, hora_entrada, hora_salida, hora_salida_comer, hora_regreso_comer,
+          isSpecialist, foto, empresa_id, cargo, area, nss, hora_entrada, hora_salida, hora_salida_comer, hora_regreso_comer,
           created_at, updated_at) 
           VALUES 
           ('${nombres}', '${apellidos}', 
           ${telefono ? `'${telefono}'` : 'NULL'},
           '${correo}', 
           '${hashedPassword}', 
-          1, ${fotoDB}, ${identificacionDB}, '${empresa_id}', '${cargo}', '${area}', '${nss}', '${hora_entrada}', '${hora_salida}', '${hora_salida_comer}', '${hora_regreso_comer}',
+          1, ${fotoDB}, '${empresa_id}', '${cargo}', '${area}', '${nss}', '${hora_entrada}', '${hora_salida}', '${hora_salida_comer}', '${hora_regreso_comer}',
           '${fecha}', '${fecha}')`;
 
     }
@@ -278,7 +268,7 @@ app.put('/set', imageController.upload, async (req, res) => {
     // VALIDAMOS ARCHIVOS
     // ============================
     let existeFoto = req.files?.foto && req.files.foto.length > 0;
-    let existeIdentificacion = req.files?.identificacion && req.files.identificacion.length > 0;
+    
 
     let formdata = new FormData();
     let noFotos = 0;
@@ -316,26 +306,9 @@ app.put('/set', imageController.upload, async (req, res) => {
     }
 
     // ============================
-    // IDENTIFICACION
-    // ============================
-    if (existeIdentificacion) {
-      noFotos++;
-
-      let tituloIdentificacion = `${date}-${req.files.identificacion[0].originalname}`;
-      let identificacion1 = `${process.env.URLFRONT}/images/guias/${tituloIdentificacion}`;
-
-      let file2 = fs.readFileSync(req.files.identificacion[0].path, { encoding: "base64" });
-
-      formdata.append('identificacion', file2);
-      formdata.append('nombre_identificacion', tituloIdentificacion);
-
-      query += `identificacion = '${identificacion1}',`;
-    }
-
-    // ============================
     // SI HAY ARCHIVOS, SUBIMOS
     // ============================
-    if (existeFoto || existeIdentificacion) {
+    if (existeFoto) {
 
       let response = await fetch(`${process.env.URLFRONT}/images/guias/api_guias_base64.php`, {
         method: 'POST',
