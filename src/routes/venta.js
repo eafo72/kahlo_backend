@@ -6557,15 +6557,15 @@ app.get('/horarios-usuario-eventual/:id_usuario', async (req, res) => {
         const query = `
             SELECT 
                 he.id,
-                he.colaborador_id,
-                he.fecha as fecha_especifica,
+                he.id_usuario,
+                he.fecha_especifica,
                 he.hora_entrada,
                 he.hora_salida,
                 he.utilizado,
                 he.activo,
                 he.created_at,
                 he.updated_at,
-                DATE_FORMAT(he.fecha, '%d/%m/%Y') as fecha_formateada,
+                DATE_FORMAT(he.fecha_especifica, '%d/%m/%Y') as fecha_formateada,
                 CASE 
                     WHEN he.utilizado = 1 THEN 'Utilizado'
                     ELSE 'Pendiente'
@@ -6575,8 +6575,8 @@ app.get('/horarios-usuario-eventual/:id_usuario', async (req, res) => {
                     ELSE 'Inactivo'
                 END as estado_horario
             FROM horarios_eventuales he
-            WHERE he.colaborador_id = ?
-            ORDER BY he.fecha ASC
+            WHERE he.id_usuario = ?
+            ORDER BY he.fecha_especifica ASC
         `;
 
         const [horariosEventuales] = await db.pool.query(query, [id_usuario]);
