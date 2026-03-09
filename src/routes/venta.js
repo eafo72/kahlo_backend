@@ -4539,6 +4539,7 @@ app.post('/checador/entrada', async (req, res) => {
                 // Si el último fue un bloqueo, permitimos que intente de nuevo
                 tipoEvento = 'entrada_inicial'; 
             } else if (ultimo === 'entrada_inicial' || ultimo === 'entrada_autorizada' || ultimo === 'regreso_comida') {
+            } else if (ultimo === 'entrada_inicial' || ultimo === 'entrada_autorizada' || ultimo === 'regreso_comida' || ultimo === 'entrada_perdonada') {
                 // Si ya tiene una entrada exitosa, entonces sí bloqueamos
                 return res.json({ error: true, message: 'Ya tienes una entrada registrada hoy' });
             }
@@ -4848,6 +4849,8 @@ app.post('/checador/salida', async (req, res) => {
       if (
         ultimoEvento !== 'entrada_inicial' &&
         ultimoEvento !== 'entrada_autorizada'
+        ultimoEvento !== 'entrada_autorizada' &&
+        ultimoEvento !== 'entrada_perdonada'
       ) {
         console.log("❌ Secuencia inválida comida");
         return res.json({
@@ -4866,6 +4869,8 @@ app.post('/checador/salida', async (req, res) => {
         ultimoEvento !== 'entrada_inicial' &&
         ultimoEvento !== 'regreso_comida' &&
         ultimoEvento !== 'entrada_autorizada'
+        ultimoEvento !== 'entrada_autorizada' &&
+        ultimoEvento !== 'entrada_perdonada'
       ) {
         console.log("❌ Secuencia inválida final");
         return res.json({
