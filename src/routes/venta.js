@@ -4531,7 +4531,8 @@ app.post('/checador/entrada', async (req, res) => {
 
         // 4️⃣ VERIFICAR ÚLTIMO MOVIMIENTO (Solo para colaboradores normales)
         // Para eventuales, permitimos múltiples entradas si tienen múltiples horarios sin usar
-        let tipoEvento = 'entrada_inicial';
+        // Definir tipo de evento base: si es eventual usamos el nombre específico
+        let tipoEvento = usuario.isEventual === 1 ? 'entrada_inicial_eventual' : 'entrada_inicial';
 
         if (usuario.isEventual !== 1) {
             const [ultimoRows] = await db.pool.query(
@@ -4567,6 +4568,7 @@ app.post('/checador/entrada', async (req, res) => {
         let horarioEventualId = null; // Para marcarlo como usado después
 
         if (usuario.isEventual === 1) {
+            const horaActual = ahoraCDMX.toTimeString().split(' ')[0];
             console.log("👷 Buscando en horarios_eventuales un horario disponible...");
 
             // Buscamos el horario más cercano a la hora actual que NO haya sido utilizado
@@ -4577,9 +4579,9 @@ app.post('/checador/entrada', async (req, res) => {
                  AND fecha_especifica = ? 
                  AND activo = 1 
                  AND utilizado = 0
-                 ORDER BY hora_entrada ASC
+                 ORDER BY ABS(TIME_TO_SEC(TIMEDIFF(hora_entrada, ?)))
                  LIMIT 1`,
-                [usuario.id, fechaHoy]
+                [usuario.id, fechaHoy, horaActual]
             );
 
             if (!eventualRows.length) {
@@ -4600,7 +4602,7 @@ app.post('/checador/entrada', async (req, res) => {
                  WHERE id_usuario = ? 
                  AND dia_semana = ? 
                  AND activo = 1 
-                 AND LIMIT 1`,
+                 LIMIT 1`,
                 [usuario.id, diaSemana]
             );
 
@@ -4659,7 +4661,8 @@ app.post('/checador/entrada', async (req, res) => {
 
                 let minutosFinal = minutosRetardo;
                 let clasificacionFinal = 'sin_pase';
-                let tipoEventoFinal = 'entrada_autorizada';
+                // Dentro del Punto 8, antes del INSERT de autorizados:
+                let tipoEventoFinal = usuario.isEventual === 1 ? 'entrada_autorizada_eventual' : 'entrada_autorizada';
 
                 if (estadoAutorizacion === 'perdonado') {
                     minutosFinal = 0;
@@ -4718,13 +4721,13 @@ app.post('/checador/entrada', async (req, res) => {
             }
         }
 
-        // 9️⃣ ENTRADA NORMAL
-        await db.pool.query(
-            `INSERT INTO checador_movimientos
-            (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
-            VALUES (?, 'entrada', ?, ?, ?, 0, 'entrada_inicial')`,
-            [usuario.id, fechaMysql, minutosRetardo, clasificacion]
-        );
+       // 9️⃣ ENTRADA NORMAL con eventual
+              await db.pool.query(
+             `INSERT INTO checador_movimientos
+              (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
+               VALUES (?, 'entrada', ?, ?, ?, 0, ?)`, // <--- El último ? es para tipoEvento
+                [usuario.id, fechaMysql, minutosRetardo, clasificacion, tipoEvento]
+               );
 
         // SI ES EVENTUAL, MARCAMOS EL HORARIO COMO USADO
         if (usuario.isEventual === 1 && horarioEventualId) {

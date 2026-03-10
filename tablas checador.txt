@@ -1,0 +1,79 @@
+Tabla: autorizaciones_ingreso
+
+| Campo             | Tipo         | Notas                          |
+| ----------------- | ------------ | ------------------------------ |
+| id                | int          | PK, auto_increment             |
+| id_usuario        | int          | index                          |
+| movimiento_id     | int          | index                          |
+| fecha             | date         | fecha del evento               |
+| hora_solicitud    | time         | hora en que pidió autorización |
+| hora_autorizacion | datetime     | cuando el admin autorizó       |
+| estado            | varchar      | default `pendiente`            |
+| motivo            | varchar(255) | motivo del retardo             |
+| autorizado_por    | int          | id del administrador           |
+| usada             | tinyint(1)   | default `0`                    |
+| vencimiento       | datetime     | cuándo deja de ser válida      |
+| created_at        | timestamp    | auto                           |
+| updated_at        | timestamp    | auto update                    |
+
+tabla: autorizaciones_asistencia
+
+| Campo                  | Tipo         | Descripción                                    |
+| ---------------------- | ------------ | ---------------------------------------------- |
+| id                     | int          | PK, auto_increment                             |
+| id_usuario_colaborador | int          | empleado al que se le autoriza                 |
+| id_usuario_admin       | int          | administrador que autorizó                     |
+| fecha                  | date         | día al que aplica                              |
+| minutos_retraso        | int          | cantidad de minutos                            |
+| motivo                 | varchar(255) | explicación                                    |
+| tipo_autorizacion      | enum         | `RETARDO_MAYOR`, `ENTRADA_SIN_HORARIO`, `OTRO` |
+| created_at             | timestamp    | registro automático                            |
+
+Tabla: checador_movimientos
+
+| Campo           | Tipo     | Función                                        |
+| --------------- | -------- | ---------------------------------------------- |
+| id              | int      | PK                                             |
+| colaborador_id  | int      | empleado                                       |
+| tipo            | varchar  | entrada / salida                               |
+| fecha_hora      | datetime | momento del evento                             |
+| minutos_retardo | int      | minutos de retraso                             |
+| clasificacion   | varchar  | normal, retardo_menor, retardo_mayor, sin_pase |
+| autorizado      | tinyint  | 0 = no, 1 = autorizado                         |
+| tipo_evento     | varchar  | tipo específico                                |
+| autorizacion_id | int      | relación con autorización                      |
+| observaciones   | varchar  | notas                                          |
+| created_at      | datetime | registro                                       |
+| updated_at      | datetime | actualización                                  |
+
+Tabla: horarios_eventuales
+
+| Campo            | Tipo      | Función                 |
+| ---------------- | --------- | ----------------------- |
+| id               | int       | PK                      |
+| id_usuario       | int       | colaborador             |
+| fecha_especifica | date      | día exacto              |
+| hora_entrada     | time      | hora programada         |
+| hora_salida      | time      | hora estimada de salida |
+| motivo           | varchar   | motivo de la visita     |
+| activo           | tinyint   | horario habilitado      |
+| utilizado        | tinyint   | si ya se usó            |
+| created_at       | timestamp | creación                |
+| updated_at       | timestamp | actualización           |
+
+
+Tabla: horarios_semanales
+
+| Campo              | Tipo      | Función                            |
+| ------------------ | --------- | ---------------------------------- |
+| id                 | int       | PK                                 |
+| id_usuario         | int       | colaborador                        |
+| dia_semana         | tinyint   | día de la semana                   |
+| hora_entrada       | time      | hora programada                    |
+| hora_salida        | time      | salida programada                  |
+| tolerancia_minutos | int       | tolerancia antes de contar retardo |
+| descanso           | tinyint   | indica día de descanso             |
+| activo             | tinyint   | horario vigente                    |
+| created_at         | timestamp | creación                           |
+| updated_at         | timestamp | actualización                      |
+
