@@ -6688,7 +6688,7 @@ app.post('/horarios-usuario-crear', async (req, res) => {
 
 app.post('/horarios-usuario-actualizar', async (req, res) => {
     try {
-        const { id, id_usuario, dia_semana, hora_entrada, hora_salida, tolerancia_minutos, descanso } = req.body;
+        let { id, id_usuario, dia_semana, hora_entrada, hora_salida, tolerancia_minutos, activo = 1 } = req.body;
 
         // Validar campos requeridos
         if (!id || !id_usuario || dia_semana === undefined) {
@@ -6725,8 +6725,8 @@ app.post('/horarios-usuario-actualizar', async (req, res) => {
                 });
             }
 
-            // Determinar si es día laboral o de descanso
-            const activo = descanso === 0 ? 1 : 0;
+            // Determinar si es día laboral o de descanso (seguimos la misma lógica que en crear)
+            const descanso = activo === 0 ? 1 : 0;
 
             // Validar campos según si es día laboral
             if (activo === 1) {
@@ -6753,11 +6753,22 @@ app.post('/horarios-usuario-actualizar', async (req, res) => {
 
             await connection.commit();
 
-            // Obtener el horario actualizado para devolverlo
+            // Obtener el horario actualizado para devolverlo (no existe tabla dias_semana, usamos CASE)
             const [updatedHorario] = await connection.query(
-                'SELECT hs.*, d.nombre as nombre_dia FROM horarios_semanales hs ' +
-                'INNER JOIN dias_semana d ON hs.dia_semana = d.dia_semana ' +
-                'WHERE hs.id = ?',
+                `SELECT
+                    hs.*,
+                    CASE
+                        WHEN hs.dia_semana = 1 THEN 'Lunes'
+                        WHEN hs.dia_semana = 2 THEN 'Martes'
+                        WHEN hs.dia_semana = 3 THEN 'Miércoles'
+                        WHEN hs.dia_semana = 4 THEN 'Jueves'
+                        WHEN hs.dia_semana = 5 THEN 'Viernes'
+                        WHEN hs.dia_semana = 6 THEN 'Sábado'
+                        WHEN hs.dia_semana = 7 THEN 'Domingo'
+                        ELSE 'Desconocido'
+                    END as nombre_dia
+                FROM horarios_semanales hs
+                WHERE hs.id = ?`,
                 [id]
             );
 
