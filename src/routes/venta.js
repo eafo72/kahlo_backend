@@ -4529,65 +4529,68 @@ app.post('/checador/entrada', async (req, res) => {
         const inicioDia = fechaHoy + " 00:00:00";
         const finDia = fechaHoy + " 23:59:59";
 
-        // 4️⃣ VERIFICAR ÚLTIMO MOVIMIENTO
-        const [ultimoRows] = await db.pool.query(
-            `SELECT tipo_evento 
-             FROM checador_movimientos 
-             WHERE colaborador_id = ? 
-             AND fecha_hora BETWEEN ? AND ?
-             ORDER BY fecha_hora DESC 
-             LIMIT 1`,
-            [usuario.id, inicioDia, finDia]
-        );
-
+        // 4️⃣ VERIFICAR ÚLTIMO MOVIMIENTO (Solo para colaboradores normales)
+        // Para eventuales, permitimos múltiples entradas si tienen múltiples horarios sin usar
         let tipoEvento = 'entrada_inicial';
 
-        if (ultimoRows.length) {
-            const ultimo = ultimoRows[0].tipo_evento;
+        if (usuario.isEventual !== 1) {
+            const [ultimoRows] = await db.pool.query(
+                `SELECT tipo_evento 
+                 FROM checador_movimientos 
+                 WHERE colaborador_id = ? 
+                 AND fecha_hora BETWEEN ? AND ?
+                 ORDER BY fecha_hora DESC 
+                 LIMIT 1`,
+                [usuario.id, inicioDia, finDia]
+            );
 
-            if (ultimo === 'salida_comida') {
-                tipoEvento = 'regreso_comida';
+            if (ultimoRows.length) {
+                const ultimo = ultimoRows[0].tipo_evento;
 
-            } else if (ultimo === 'intento_bloqueado') {
-                // permitir reintento
-                tipoEvento = 'entrada_inicial';
-
-            } else if (
-                ultimo === 'entrada_inicial' ||
-                ultimo === 'entrada_autorizada' ||
-                ultimo === 'entrada_perdonada' ||
-                ultimo === 'regreso_comida'
-            ) {
-                return res.json({ error: true, message: 'Ya tienes una entrada registrada hoy' });
+                if (ultimo === 'salida_comida') {
+                    tipoEvento = 'regreso_comida';
+                } else if (ultimo === 'intento_bloqueado') {
+                    tipoEvento = 'entrada_inicial';
+                } else if (
+                    ultimo === 'entrada_inicial' ||
+                    ultimo === 'entrada_autorizada' ||
+                    ultimo === 'entrada_perdonada' ||
+                    ultimo === 'regreso_comida'
+                ) {
+                    return res.json({ error: true, message: 'Ya tienes una entrada registrada hoy' });
+                }
             }
         }
 
         // 5️⃣ OBTENER HORARIO
         let horaProgramada = null;
+        let horarioEventualId = null; // Para marcarlo como usado después
 
         if (usuario.isEventual === 1) {
+            console.log("👷 Buscando en horarios_eventuales un horario disponible...");
 
-            console.log("👷 Buscando en horarios_eventuales...");
-
+            // Buscamos el horario más cercano a la hora actual que NO haya sido utilizado
             const [eventualRows] = await db.pool.query(
-                `SELECT hora_entrada 
+                `SELECT id, hora_entrada 
                  FROM horarios_eventuales 
                  WHERE id_usuario = ? 
                  AND fecha_especifica = ? 
                  AND activo = 1 
+                 AND utilizado = 0
+                 ORDER BY hora_entrada ASC
                  LIMIT 1`,
                 [usuario.id, fechaHoy]
             );
 
             if (!eventualRows.length) {
-                console.log("❌ Eventual sin cita para hoy");
-                return res.json({ error: true, message: 'No tienes una visita programada para hoy' });
+                console.log("❌ Eventual sin citas pendientes para hoy");
+                return res.json({ error: true, message: 'No tienes visitas programadas pendientes para hoy' });
             }
 
+            horarioEventualId = eventualRows[0].id;
             horaProgramada = eventualRows[0].hora_entrada;
 
         } else {
-
             let diaSemana = ahoraCDMX.getDay();
             if (diaSemana === 0) diaSemana = 7;
 
@@ -4597,7 +4600,7 @@ app.post('/checador/entrada', async (req, res) => {
                  WHERE id_usuario = ? 
                  AND dia_semana = ? 
                  AND activo = 1 
-                 LIMIT 1`,
+                 AND LIMIT 1`,
                 [usuario.id, diaSemana]
             );
 
@@ -4611,43 +4614,34 @@ app.post('/checador/entrada', async (req, res) => {
 
         // 6️⃣ CALCULAR RETARDO
         const horaActualMin = ahoraCDMX.getHours() * 60 + ahoraCDMX.getMinutes();
-
         const [h, m] = horaProgramada.split(':');
-
         const horaEntradaMin = parseInt(h) * 60 + parseInt(m);
 
         let minutosRetardo = horaActualMin - horaEntradaMin;
-
         if (minutosRetardo < 0) minutosRetardo = 0;
 
         let clasificacion = 'normal';
-
         if (minutosRetardo > 0 && minutosRetardo <= 15) {
             clasificacion = 'retardo_menor';
-
         } else if (minutosRetardo > 15 && minutosRetardo <= 30) {
             clasificacion = 'retardo_mayor';
-
         } else if (minutosRetardo > 30) {
             clasificacion = 'sin_pase';
         }
 
-        // 7️⃣ REGRESO COMIDA
+        // 7️⃣ REGRESO COMIDA (Solo aplica a NO eventuales por lógica de empresa)
         if (tipoEvento === 'regreso_comida') {
-
             await db.pool.query(
                 `INSERT INTO checador_movimientos
                 (colaborador_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
                 VALUES (?, 'entrada', ?, 0, 'normal', 0, 'regreso_comida')`,
                 [usuario.id, fechaMysql]
             );
-
             return res.json({ error: false, message: 'Regreso de comida exitoso' });
         }
 
-        // 8️⃣ BLOQUEO >30 MIN
+        // 8️⃣ BLOQUEO >30 MIN (Aplica a ambos, pero el eventual consume su horario si es autorizado)
         if (clasificacion === 'sin_pase') {
-
             const [authRows] = await db.pool.query(
                 `SELECT id, estado
                  FROM autorizaciones_ingreso
@@ -4660,7 +4654,6 @@ app.post('/checador/entrada', async (req, res) => {
             );
 
             if (authRows.length) {
-
                 const autorizacionId = authRows[0].id;
                 const estadoAutorizacion = authRows[0].estado;
 
@@ -4678,48 +4671,33 @@ app.post('/checador/entrada', async (req, res) => {
                     `INSERT INTO checador_movimientos
                     (colaborador_id, autorizacion_id, tipo, fecha_hora, minutos_retardo, clasificacion, autorizado, tipo_evento)
                     VALUES (?, ?, 'entrada', ?, ?, ?, 1, ?)`,
-                    [
-                        usuario.id,
-                        autorizacionId,
-                        fechaMysql,
-                        minutosFinal,
-                        clasificacionFinal,
-                        tipoEventoFinal
-                    ]
+                    [usuario.id, autorizacionId, fechaMysql, minutosFinal, clasificacionFinal, tipoEventoFinal]
                 );
 
                 await db.pool.query(
-                    `UPDATE autorizaciones_ingreso 
-                     SET usada = 1, updated_at = ?
-                     WHERE id = ?`,
+                    `UPDATE autorizaciones_ingreso SET usada = 1, updated_at = ? WHERE id = ?`,
                     [fechaMysql, autorizacionId]
                 );
 
-                console.log("✅ Entrada autorizada/perdonada correctamente");
-
-                if (estadoAutorizacion === 'perdonado') {
-                    return res.json({ error: false, message: 'Bienvenido (Retardo Perdonado)' });
+                // SI ES EVENTUAL, MARCAMOS EL HORARIO COMO USADO
+                if (usuario.isEventual === 1 && horarioEventualId) {
+                    await db.pool.query(
+                        `UPDATE horarios_eventuales SET utilizado = 1, updated_at = NOW() WHERE id = ?`,
+                        [horarioEventualId]
+                    );
                 }
 
-                return res.json({ error: false, message: 'Bienvenido (Autorizado)' });
+                console.log("✅ Entrada autorizada correctamente");
+                return res.json({ error: false, message: estadoAutorizacion === 'perdonado' ? 'Bienvenido (Retardo Perdonado)' : 'Bienvenido (Autorizado)' });
 
             } else {
-
                 const [pendiente] = await db.pool.query(
-                    `SELECT id 
-                     FROM autorizaciones_ingreso 
-                     WHERE id_usuario = ? 
-                     AND fecha = ? 
-                     AND estado = 'pendiente' 
-                     LIMIT 1`,
+                    `SELECT id FROM autorizaciones_ingreso WHERE id_usuario = ? AND fecha = ? AND estado = 'pendiente' LIMIT 1`,
                     [usuario.id, fechaHoy]
                 );
 
                 if (pendiente.length) {
-                    return res.json({
-                        error: true,
-                        message: 'Tu solicitud sigue pendiente. Pide al administrador que la apruebe.'
-                    });
+                    return res.json({ error: true, message: 'Tu solicitud sigue pendiente. Pide al administrador que la apruebe.' });
                 }
 
                 const [movResult] = await db.pool.query(
@@ -4733,20 +4711,10 @@ app.post('/checador/entrada', async (req, res) => {
                     `INSERT INTO autorizaciones_ingreso
                     (id_usuario, movimiento_id, fecha, hora_solicitud, estado, usada, created_at, updated_at)
                     VALUES (?, ?, ?, ?, 'pendiente', 0, ?, ?)`,
-                    [
-                        usuario.id,
-                        movResult.insertId,
-                        fechaHoy,
-                        fechaMysql.split(' ')[1],
-                        fechaMysql,
-                        fechaMysql
-                    ]
+                    [usuario.id, movResult.insertId, fechaHoy, fechaMysql.split(' ')[1], fechaMysql, fechaMysql]
                 );
 
-                return res.json({
-                    error: true,
-                    message: 'Requiere autorización (Excedió 30 min). Solicitud enviada.'
-                });
+                return res.json({ error: true, message: 'Requiere autorización (Excedió 30 min). Solicitud enviada.' });
             }
         }
 
@@ -4758,14 +4726,20 @@ app.post('/checador/entrada', async (req, res) => {
             [usuario.id, fechaMysql, minutosRetardo, clasificacion]
         );
 
-        console.log("✅ Entrada guardada correctamente");
+        // SI ES EVENTUAL, MARCAMOS EL HORARIO COMO USADO
+        if (usuario.isEventual === 1 && horarioEventualId) {
+            await db.pool.query(
+                `UPDATE horarios_eventuales SET utilizado = 1, updated_at = NOW() WHERE id = ?`,
+                [horarioEventualId]
+            );
+            console.log(`✅ Horario eventual ${horarioEventualId} marcado como utilizado`);
+        }
 
+        console.log("✅ Entrada guardada correctamente");
         return res.json({ error: false, message: 'Bienvenido' });
 
     } catch (error) {
-
         console.error('🔥 ERROR CRÍTICO EN CHECADOR:', error);
-
         return res.json({
             error: true,
             message: 'Error interno',
@@ -4827,9 +4801,9 @@ app.post('/checador/salida', async (req, res) => {
     const inicioDia = fechaHoy + " 00:00:00";
     const finDia = fechaHoy + " 23:59:59";
 
-    // 2️⃣ VALIDAR USUARIO ACTIVO
+    // 2️⃣ VALIDAR USUARIO ACTIVO Y OBTENER TIPO
     const [usuarioRows] = await db.pool.query(
-      `SELECT id, status FROM usuario WHERE id = ? LIMIT 1`,
+      `SELECT id, status, isEventual FROM usuario WHERE id = ? LIMIT 1`,
       [idUsuario]
     );
 
@@ -4837,6 +4811,8 @@ app.post('/checador/salida', async (req, res) => {
       console.log("❌ Usuario no válido");
       return res.json({ error: true, message: 'Usuario no válido' });
     }
+
+    const usuario = usuarioRows[0];
 
     // 3️⃣ OBTENER ÚLTIMO MOVIMIENTO DEL DÍA
     const [ultimoRows] = await db.pool.query(
@@ -4855,39 +4831,48 @@ app.post('/checador/salida', async (req, res) => {
     const ultimoEvento = ultimoRows[0].tipo_evento;
     console.log("🔎 Último evento detectado:", ultimoEvento);
 
-    // 🔒 BLOQUEAR SI YA TIENE SALIDA FINAL
-    if (ultimoEvento === 'salida_final') {
-      console.log("❌ Ya tiene salida final");
-      return res.json({ error: true, message: 'Ya registró salida final' });
-    }
-
     let nuevoEvento = null;
 
-    // 🔹 LÓGICA SALIDA COMIDA (TIPO 1)
-    if (tipoSalida === '1') {
-      if (
-        ultimoEvento !== 'entrada_inicial' &&
-        ultimoEvento !== 'entrada_autorizada' &&
-        ultimoEvento !== 'entrada_perdonada'
-      ) {
-        console.log("❌ Secuencia inválida para comida");
-        return res.json({ error: true, message: 'Debes estar en turno para salir a comer' });
+    // --- LÓGICA DIFERENCIADA PARA EVENTUALES ---
+    if (usuario.isEventual === 1) {
+      // Para el eventual no validamos si es comida o final, 
+      // simplemente registramos que está saliendo de su visita.
+      nuevoEvento = 'salida_eventual';
+    } 
+    // --- LÓGICA PARA COLABORADORES NORMALES (Tú código original) ---
+    else {
+      // 🔒 BLOQUEAR SI YA TIENE SALIDA FINAL
+      if (ultimoEvento === 'salida_final') {
+        console.log("❌ Ya tiene salida final");
+        return res.json({ error: true, message: 'Ya registró salida final' });
       }
-      nuevoEvento = 'salida_comida';
-    }
 
-    // 🔹 LÓGICA SALIDA FINAL (TIPO 2)
-    if (tipoSalida === '2') {
-      if (
-        ultimoEvento !== 'entrada_inicial' &&
-        ultimoEvento !== 'regreso_comida' &&
-        ultimoEvento !== 'entrada_autorizada' &&
-        ultimoEvento !== 'entrada_perdonada'
-      ) {
-        console.log("❌ Secuencia inválida para salida final");
-        return res.json({ error: true, message: 'Secuencia de salida no permitida' });
+      // 🔹 LÓGICA SALIDA COMIDA (TIPO 1)
+      if (tipoSalida === '1') {
+        if (
+          ultimoEvento !== 'entrada_inicial' &&
+          ultimoEvento !== 'entrada_autorizada' &&
+          ultimoEvento !== 'entrada_perdonada'
+        ) {
+          console.log("❌ Secuencia inválida para comida");
+          return res.json({ error: true, message: 'Debes estar en turno para salir a comer' });
+        }
+        nuevoEvento = 'salida_comida';
       }
-      nuevoEvento = 'salida_final';
+
+      // 🔹 LÓGICA SALIDA FINAL (TIPO 2)
+      if (tipoSalida === '2') {
+        if (
+          ultimoEvento !== 'entrada_inicial' &&
+          ultimoEvento !== 'regreso_comida' &&
+          ultimoEvento !== 'entrada_autorizada' &&
+          ultimoEvento !== 'entrada_perdonada'
+        ) {
+          console.log("❌ Secuencia inválida para salida final");
+          return res.json({ error: true, message: 'Secuencia de salida no permitida' });
+        }
+        nuevoEvento = 'salida_final';
+      }
     }
 
     if (!nuevoEvento) {
