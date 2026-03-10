@@ -4573,7 +4573,7 @@ app.post('/checador/entrada', async (req, res) => {
                 `SELECT hora_entrada 
                  FROM horarios_eventuales 
                  WHERE id_usuario = ? 
-                 AND fecha = ? 
+                 AND fecha_especifica = ? 
                  AND activo = 1 
                  LIMIT 1`,
                 [usuario.id, fechaHoy]
