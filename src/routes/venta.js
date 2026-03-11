@@ -4534,34 +4534,51 @@ app.post('/checador/entrada', async (req, res) => {
         // Definir tipo de evento base: si es eventual usamos el nombre específico
         let tipoEvento = usuario.isEventual === 1 ? 'entrada_inicial_eventual' : 'entrada_inicial';
 
-        if (usuario.isEventual !== 1) {
-            const [ultimoRows] = await db.pool.query(
-                `SELECT tipo_evento 
-                 FROM checador_movimientos 
-                 WHERE colaborador_id = ? 
-                 AND fecha_hora BETWEEN ? AND ?
-                 ORDER BY fecha_hora DESC 
-                 LIMIT 1`,
-                [usuario.id, inicioDia, finDia]
-            );
+       if (usuario.isEventual !== 1) {
 
-            if (ultimoRows.length) {
-                const ultimo = ultimoRows[0].tipo_evento;
+    const [ultimoRows] = await db.pool.query(
+        `SELECT tipo_evento 
+         FROM checador_movimientos 
+         WHERE colaborador_id = ? 
+         AND fecha_hora BETWEEN ? AND ?
+         ORDER BY fecha_hora DESC 
+         LIMIT 1`,
+        [usuario.id, inicioDia, finDia]
+    );
 
-                if (ultimo === 'salida_comida') {
-                    tipoEvento = 'regreso_comida';
-                } else if (ultimo === 'intento_bloqueado') {
-                    tipoEvento = 'entrada_inicial';
-                } else if (
-                    ultimo === 'entrada_inicial' ||
-                    ultimo === 'entrada_autorizada' ||
-                    ultimo === 'entrada_perdonada' ||
-                    ultimo === 'regreso_comida'
-                ) {
-                    return res.json({ error: true, message: 'Ya tienes una entrada registrada hoy' });
-                }
-            }
+    if (ultimoRows.length) {
+        const ultimo = ultimoRows[0].tipo_evento;
+
+        if (ultimo === 'salida_comida') {
+            tipoEvento = 'regreso_comida';
+        } else if (ultimo === 'intento_bloqueado') {
+            tipoEvento = 'entrada_inicial';
+        } else if (
+            ultimo === 'entrada_inicial' ||
+            ultimo === 'entrada_autorizada' ||
+            ultimo === 'entrada_perdonada' ||
+            ultimo === 'regreso_comida'
+        ) {
+            return res.json({ error: true, message: 'Ya tienes una entrada registrada hoy' });
         }
+    }
+
+    // 🚫 BLOQUEAR SEGUNDA ENTRADA SOLO SI ES entrada_inicial
+    const [entradaHoy] = await db.pool.query(
+        `SELECT id 
+         FROM checador_movimientos
+         WHERE colaborador_id = ?
+         AND tipo_evento = 'entrada_inicial'
+         AND fecha_hora BETWEEN ? AND ?
+         LIMIT 1`,
+        [usuario.id, inicioDia, finDia]
+    );
+
+    if (entradaHoy.length && tipoEvento === 'entrada_inicial') {
+        console.log("⛔ SEGUNDA ENTRADA BLOQUEADA");
+        return res.json({ error: true, message: 'Ya registraste tu entrada hoy' });
+    }
+}
 
         // 5️⃣ OBTENER HORARIO
         let horaProgramada = null;
@@ -4571,6 +4588,7 @@ app.post('/checador/entrada', async (req, res) => {
             const horaActual = ahoraCDMX.toTimeString().split(' ')[0];
             console.log("👷 Buscando en horarios_eventuales un horario disponible...");
 
+      
             // Buscamos el horario más cercano a la hora actual que NO haya sido utilizado
             const [eventualRows] = await db.pool.query(
                 `SELECT id, hora_entrada 
