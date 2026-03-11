@@ -4639,6 +4639,7 @@ app.post('/checador/entrada', async (req, res) => {
                 VALUES (?, 'entrada', ?, 0, 'normal', 0, 'regreso_comida')`,
                 [usuario.id, fechaMysql]
             );
+             console.log(`🍽 REGRESO_COMIDA registrada para ID: ${usuario.id}`);
             return res.json({ error: false, message: 'Regreso de comida exitoso' });
         }
 
