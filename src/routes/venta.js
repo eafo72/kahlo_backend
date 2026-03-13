@@ -4559,8 +4559,6 @@ if (salidaAyer.length) {
 }
 
         // 4️⃣ VERIFICAR ÚLTIMO MOVIMIENTO (Solo para colaboradores normales)
-        // Para eventuales, permitimos múltiples entradas si tienen múltiples horarios sin usar
-        // Definir tipo de evento base: si es eventual usamos el nombre específico
         let tipoEvento = usuario.isEventual === 1 ? 'entrada_inicial_eventual' : 'entrada_inicial';
 
        if (usuario.isEventual !== 1) {
@@ -4577,6 +4575,15 @@ if (salidaAyer.length) {
 
     if (ultimoRows.length) {
         const ultimo = ultimoRows[0].tipo_evento;
+
+          // 🚫 BLOQUEAR REINGRESO DESPUÉS DE SALIDA FINAL
+    if (ultimo === 'salida_final') {
+        console.log("⛔ Intento de reingreso después de salida final");
+        return res.json({
+            error: true,
+            message: 'Ya registraste tu salida final hoy'
+        });
+    }
 
         if (ultimo === 'salida_comida') {
             tipoEvento = 'regreso_comida';
