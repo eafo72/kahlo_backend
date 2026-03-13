@@ -4530,26 +4530,33 @@ app.post('/checador/entrada', async (req, res) => {
         const finDia = fechaHoy + " 23:59:59";
 
         // 🚨 VALIDAR SI AYER QUEDÓ TURNO ABIERTO
-         const [salidaAyer] = await db.pool.query(
-         `SELECT tipo_evento
-          FROM checador_movimientos
-            WHERE colaborador_id = ?
-           ORDER BY fecha_hora DESC
-            LIMIT 1`,
-             [usuario.id]
-         );
+const [salidaAyer] = await db.pool.query(
+ `SELECT tipo_evento, fecha_hora
+  FROM checador_movimientos
+  WHERE colaborador_id = ?
+  ORDER BY fecha_hora DESC
+  LIMIT 1`,
+ [usuario.id]
+);
 
-          if (
-           salidaAyer.length &&
-           salidaAyer[0].tipo_evento !== 'salida_final' &&
-              salidaAyer[0].tipo_evento !== 'salida_eventual'
-             ) {
-             console.log("⚠️ TURNO ANTERIOR SIN CERRAR");
-            return res.json({
-             error: true,
-              message: 'Debe registrar salida del turno anterior'
-              });
-          }
+if (salidaAyer.length) {
+
+    const fechaUltimo = salidaAyer[0].fecha_hora.toISOString().split('T')[0];
+
+    // SOLO SI EL MOVIMIENTO FUE OTRO DÍA
+    if (
+        fechaUltimo !== fechaHoy &&
+        salidaAyer[0].tipo_evento !== 'salida_final' &&
+        salidaAyer[0].tipo_evento !== 'salida_eventual'
+    ) {
+        console.log("⚠️ TURNO ANTERIOR SIN CERRAR");
+
+        return res.json({
+            error: true,
+            message: 'Debe registrar salida del turno anterior'
+        });
+    }
+}
 
         // 4️⃣ VERIFICAR ÚLTIMO MOVIMIENTO (Solo para colaboradores normales)
         // Para eventuales, permitimos múltiples entradas si tienen múltiples horarios sin usar
