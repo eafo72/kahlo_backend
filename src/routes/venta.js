@@ -4858,22 +4858,23 @@ app.post('/checador/salida', async (req, res) => {
 
     const usuario = usuarioRows[0];
 
-    // 3️⃣ OBTENER ÚLTIMO MOVIMIENTO DEL DÍA
-    const [ultimoRows] = await db.pool.query(
-      `SELECT tipo_evento FROM checador_movimientos
-       WHERE colaborador_id = ?
-       AND fecha_hora BETWEEN ? AND ?
-       ORDER BY fecha_hora DESC LIMIT 1`,
-      [idUsuario, inicioDia, finDia]
-    );
+   // 3️⃣ OBTENER ÚLTIMO MOVIMIENTO (DE CUALQUIER DÍA)
+const [ultimoRows] = await db.pool.query(
+  `SELECT tipo_evento, fecha_hora
+   FROM checador_movimientos
+   WHERE colaborador_id = ?
+   ORDER BY fecha_hora DESC
+   LIMIT 1`,
+  [idUsuario]
+);
 
-    if (!ultimoRows.length) {
-      console.log("❌ No tiene entrada previa");
-      return res.json({ error: true, message: 'No ha registrado entrada hoy' });
-    }
+if (!ultimoRows.length) {
+  console.log("❌ No tiene entrada previa");
+  return res.json({ error: true, message: 'No tiene registros previos' });
+}
 
-    const ultimoEvento = ultimoRows[0].tipo_evento;
-    console.log("🔎 Último evento detectado:", ultimoEvento);
+const ultimoEvento = ultimoRows[0].tipo_evento;
+console.log("🔎 Último evento detectado:", ultimoEvento);
 
     let nuevoEvento = null;
 
