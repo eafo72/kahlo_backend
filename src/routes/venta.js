@@ -4990,6 +4990,124 @@ app.get('/checador/movimientos', async (req, res) => {
     }
 })
 
+app.post('/checador/biometrico', async (req, res) => {
+  try {
+
+    console.log("====================================");
+    console.log("🧠 BIOMÉTRICO - Nueva lectura");
+
+    const { qr } = req.body;
+
+    // VALIDAR QR
+    if (!qr || typeof qr !== 'string' || !qr.endsWith('-Z')) {
+      return res.json({ error: true, message: 'QR inválido' });
+    }
+
+    const match = qr.match(/^\d+/);
+    if (!match) {
+      return res.json({ error: true, message: 'QR formato incorrecto' });
+    }
+
+    const usuarioId = parseInt(match[0]);
+
+    // VALIDAR USUARIO
+    const [usuarioRows] = await db.pool.query(
+      `SELECT id, status FROM usuario WHERE id = ? LIMIT 1`,
+      [usuarioId]
+    );
+
+    if (!usuarioRows.length || usuarioRows[0].status !== 1) {
+      return res.json({ error: true, message: 'Usuario no válido' });
+    }
+
+    // OBTENER ÚLTIMO MOVIMIENTO
+    const [ultimoRows] = await db.pool.query(
+      `SELECT tipo_evento
+       FROM checador_movimientos
+       WHERE colaborador_id = ?
+       ORDER BY fecha_hora DESC
+       LIMIT 1`,
+      [usuarioId]
+    );
+
+    let ultimoEvento = ultimoRows.length ? ultimoRows[0].tipo_evento : null;
+
+    let destino = null;
+    let qrSalida = null;
+
+    // DECISIÓN
+    if (!ultimoEvento) {
+      destino = "entrada";
+    }
+
+    else if (
+      ultimoEvento === 'salida_comida' ||
+      ultimoEvento === 'salida_eventual'
+    ) {
+      destino = "entrada";
+    }
+
+    else if (
+      ultimoEvento === 'entrada_inicial' ||
+      ultimoEvento === 'entrada_autorizada' ||
+      ultimoEvento === 'entrada_perdonada'
+    ) {
+      destino = "salida";
+      qrSalida = `SALIDA2026-1-${usuarioId}`;
+    }
+
+    else if (ultimoEvento === 'regreso_comida') {
+      destino = "salida";
+      qrSalida = `SALIDA2026-2-${usuarioId}`;
+    }
+
+    else if (ultimoEvento === 'salida_final') {
+      return res.json({
+        error: true,
+        message: 'Turno ya finalizado'
+      });
+    }
+
+    // REDIRECCIÓN
+    if (destino === "entrada") {
+
+      const response = await fetch('http://localhost:4000/checador/entrada', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qr })
+      });
+
+      const data = await response.json();
+      return res.json(data);
+
+    }
+
+    if (destino === "salida") {
+
+      const response = await fetch('http://localhost:4000/checador/salida', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qr: qrSalida })
+      });
+
+      const data = await response.json();
+      return res.json(data);
+
+    }
+
+  } catch (error) {
+
+    console.error("🔥 ERROR BIOMÉTRICO:", error);
+
+    return res.json({
+      error: true,
+      message: 'Error interno',
+      detalle: error.message
+    });
+
+  }
+});
+
 // ==========================================
 // ENDPOINTS DE ADMINISTRACIÓN DE ASISTENCIA
 // ==========================================
